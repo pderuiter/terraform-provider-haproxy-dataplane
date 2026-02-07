@@ -12,6 +12,8 @@ builds:
     binary: terraform-provider-haproxy-dataplane_v{{ .Version }}
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - darwin
       - linux
@@ -19,12 +21,15 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     mod_timestamp: '{{ .CommitTimestamp }}'
     ldflags:
       - -s -w -X main.version={{ .Version }}
 
 archives:
-  - format: zip
+  - formats: ['zip']
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 checksum:

@@ -47,5 +47,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
           GITHUB_REPOSITORY: pderuiter/terraform-provider-haproxy-dataplane
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-          GOFLAGS: -p=1
-          GOMAXPROCS: 2
+          GOFLAGS: -p=1 -trimpath
+          GOMAXPROCS: 1
+          GOMEMLIMIT: 1024MiB
