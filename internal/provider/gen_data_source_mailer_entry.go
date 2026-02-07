@@ -23,9 +23,9 @@ type mailer_entryDataSource struct {
 }
 
 type mailer_entryDataSourceModel struct {
-	MailersSection types.String `tfsdk:"mailers_section"`
-	Items          types.List   `tfsdk:"items"`
-	ID             types.String `tfsdk:"id"`
+	MailersSection types.String  `tfsdk:"mailers_section"`
+	Items          types.Dynamic `tfsdk:"items"`
+	ID             types.String  `tfsdk:"id"`
 }
 
 func (d *mailer_entryDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -33,21 +33,19 @@ func (d *mailer_entryDataSource) Metadata(ctx context.Context, req datasource.Me
 }
 
 func (d *mailer_entryDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("mailer_entry")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "mailer_entry")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"mailers_section": schema.StringAttribute{Required: true},
-			"items":           schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items":           schema.DynamicAttribute{Computed: true},
 			"id":              schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *mailer_entryDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -73,9 +71,9 @@ func (d *mailer_entryDataSource) Read(ctx context.Context, req datasource.ReadRe
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("mailer_entry"), out)
+	items, diags := listObjectsFromSchema(ctx, "mailer_entry", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"mailer_entry"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

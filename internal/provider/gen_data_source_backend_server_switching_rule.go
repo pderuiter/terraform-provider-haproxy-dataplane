@@ -23,8 +23,8 @@ type backend_server_switching_ruleDataSource struct {
 }
 
 type backend_server_switching_ruleDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *backend_server_switching_ruleDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *backend_server_switching_ruleDataSource) Metadata(ctx context.Context, 
 }
 
 func (d *backend_server_switching_ruleDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("server_switching_rule")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "server_switching_rule")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *backend_server_switching_ruleDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *backend_server_switching_ruleDataSource) Read(ctx context.Context, req 
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("server_switching_rule"), out)
+	items, diags := listObjectsFromSchema(ctx, "server_switching_rule", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"backend_server_switching_rule"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

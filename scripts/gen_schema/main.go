@@ -21,6 +21,7 @@ type genResult struct {
 	SchemaCode string
 	TypeCode   string
 	Imports    map[string]bool
+	HasDynamic bool
 }
 
 func main() {
@@ -101,15 +102,22 @@ func generateObjectSchema(spec *openapi3.T, schemaRef *openapi3.SchemaRef, exclu
 		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		return tfName(keys[i]) < tfName(keys[j])
+	})
 
 	attrMap := make(map[string]genResult)
 	imports := map[string]bool{}
+	hasDynamic := false
 	for _, k := range keys {
 		prop := props[k]
-		attrMap[k] = generateAttribute(spec, prop, required(merged, k))
-		for imp := range attrMap[k].Imports {
+		tfKey := tfName(k)
+		attrMap[tfKey] = generateAttribute(spec, prop, required(merged, k))
+		for imp := range attrMap[tfKey].Imports {
 			imports[imp] = true
+		}
+		if attrMap[tfKey].HasDynamic {
+			hasDynamic = true
 		}
 	}
 
@@ -124,14 +132,15 @@ func generateObjectSchema(spec *openapi3.T, schemaRef *openapi3.SchemaRef, exclu
 			schemaBuf.WriteString(" ")
 			typeBuf.WriteString(" ")
 		}
-		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", k, attrMap[k].SchemaCode))
-		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", k, attrMap[k].TypeCode))
+		tfKey := tfName(k)
+		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, attrMap[tfKey].SchemaCode))
+		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, attrMap[tfKey].TypeCode))
 	}
 
 	schemaBuf.WriteString("}")
 	typeBuf.WriteString("}")
 
-	return genResult{SchemaCode: schemaBuf.String(), TypeCode: typeBuf.String(), Imports: imports}
+	return genResult{SchemaCode: schemaBuf.String(), TypeCode: typeBuf.String(), Imports: imports, HasDynamic: hasDynamic}
 }
 
 func required(schema *openapi3.Schema, key string) bool {
@@ -143,6 +152,13 @@ func required(schema *openapi3.Schema, key string) bool {
 	return false
 }
 
+func requiredOptional(req bool) string {
+	if req {
+		return "Required: true"
+	}
+	return "Optional: true"
+}
+
 func generateAttribute(spec *openapi3.T, schemaRef *openapi3.SchemaRef, req bool) genResult {
 	schema := resolveSchema(spec, schemaRef)
 	if len(schema.AllOf) > 0 {
@@ -151,8 +167,9 @@ func generateAttribute(spec *openapi3.T, schemaRef *openapi3.SchemaRef, req bool
 
 	if len(schema.OneOf) > 0 || len(schema.AnyOf) > 0 {
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{Optional: %t}", !req),
+			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
 			TypeCode:   "types.DynamicType",
+			HasDynamic: true,
 		}
 	}
 
@@ -171,15 +188,16 @@ func generateAttribute(spec *openapi3.T, schemaRef *openapi3.SchemaRef, req bool
 		return objectAttr(spec, schema, req)
 	default:
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{Optional: %t}", !req),
+			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
 			TypeCode:   "types.DynamicType",
+			HasDynamic: true,
 		}
 	}
 }
 
 func simpleAttr(kind, typeCode string, req bool) genResult {
 	return genResult{
-		SchemaCode: fmt.Sprintf("schema.%sAttribute{Optional: %t}", kind, !req),
+		SchemaCode: fmt.Sprintf("schema.%sAttribute{%s}", kind, requiredOptional(req)),
 		TypeCode:   typeCode,
 	}
 }
@@ -193,13 +211,13 @@ func stringAttr(schema *openapi3.Schema, req bool) genResult {
 			}
 		}
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.StringAttribute{Optional: %t, Validators: []validator.String{stringvalidator.OneOf(%s)}}", !req, quoteStrings(enums)),
+			SchemaCode: fmt.Sprintf("schema.StringAttribute{%s, Validators: []validator.String{stringvalidator.OneOf(%s)}}", requiredOptional(req), quoteStrings(enums)),
 			TypeCode:   "types.StringType",
 			Imports:    map[string]bool{"stringvalidator": true},
 		}
 	}
 	return genResult{
-		SchemaCode: fmt.Sprintf("schema.StringAttribute{Optional: %t}", !req),
+		SchemaCode: fmt.Sprintf("schema.StringAttribute{%s}", requiredOptional(req)),
 		TypeCode:   "types.StringType",
 	}
 }
@@ -207,24 +225,40 @@ func stringAttr(schema *openapi3.Schema, req bool) genResult {
 func arrayAttr(spec *openapi3.T, schema *openapi3.Schema, req bool) genResult {
 	if schema.Items == nil {
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.ListAttribute{Optional: %t, ElementType: types.DynamicType}", !req),
-			TypeCode:   "types.ListType{ElemType: types.DynamicType}",
+			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
+			TypeCode:   "types.DynamicType",
+			HasDynamic: true,
 		}
 	}
 
 	item := resolveSchema(spec, schema.Items)
 	if hasType(item, "object") || len(item.AllOf) > 0 {
-		schemaMap, typeMap, imports := buildObjectMaps(spec, item)
+		schemaMap, typeMap, imports, hasDynamic := buildObjectMaps(spec, item)
+		if hasDynamic {
+			return genResult{
+				SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
+				TypeCode:   "types.DynamicType",
+				HasDynamic: true,
+			}
+		}
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.ListNestedAttribute{Optional: %t, NestedObject: schema.NestedAttributeObject{Attributes: %s}}", !req, schemaMap),
+			SchemaCode: fmt.Sprintf("schema.ListNestedAttribute{%s, NestedObject: schema.NestedAttributeObject{Attributes: %s}}", requiredOptional(req), schemaMap),
 			TypeCode:   fmt.Sprintf("types.ListType{ElemType: types.ObjectType{AttrTypes: %s}}", typeMap),
 			Imports:    imports,
 		}
 	}
 
 	itemRes := generateAttribute(spec, schema.Items, true)
+	if itemRes.HasDynamic {
+		return genResult{
+			SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
+			TypeCode:   "types.DynamicType",
+			Imports:    itemRes.Imports,
+			HasDynamic: true,
+		}
+	}
 	return genResult{
-		SchemaCode: fmt.Sprintf("schema.ListAttribute{Optional: %t, ElementType: %s}", !req, itemRes.TypeCode),
+		SchemaCode: fmt.Sprintf("schema.ListAttribute{%s, ElementType: %s}", requiredOptional(req), itemRes.TypeCode),
 		TypeCode:   fmt.Sprintf("types.ListType{ElemType: %s}", itemRes.TypeCode),
 		Imports:    itemRes.Imports,
 	}
@@ -234,38 +268,48 @@ func objectAttr(spec *openapi3.T, schema *openapi3.Schema, req bool) genResult {
 	if schema.AdditionalProperties.Schema != nil {
 		ap := resolveSchema(spec, schema.AdditionalProperties.Schema)
 		if hasType(ap, "object") || len(ap.AllOf) > 0 {
-			schemaMap, typeMap, imports := buildObjectMaps(spec, ap)
+			schemaMap, typeMap, imports, hasDynamic := buildObjectMaps(spec, ap)
+			if hasDynamic {
+				return genResult{
+					SchemaCode: fmt.Sprintf("schema.DynamicAttribute{%s}", requiredOptional(req)),
+					TypeCode:   "types.DynamicType",
+					HasDynamic: true,
+				}
+			}
 			return genResult{
-				SchemaCode: fmt.Sprintf("schema.MapNestedAttribute{Optional: %t, NestedObject: schema.NestedAttributeObject{Attributes: %s}}", !req, schemaMap),
+				SchemaCode: fmt.Sprintf("schema.MapNestedAttribute{%s, NestedObject: schema.NestedAttributeObject{Attributes: %s}}", requiredOptional(req), schemaMap),
 				TypeCode:   fmt.Sprintf("types.MapType{ElemType: types.ObjectType{AttrTypes: %s}}", typeMap),
 				Imports:    imports,
 			}
 		}
 		child := generateAttribute(spec, schema.AdditionalProperties.Schema, true)
 		return genResult{
-			SchemaCode: fmt.Sprintf("schema.MapAttribute{Optional: %t, ElementType: %s}", !req, child.TypeCode),
+			SchemaCode: fmt.Sprintf("schema.MapAttribute{%s, ElementType: %s}", requiredOptional(req), child.TypeCode),
 			TypeCode:   fmt.Sprintf("types.MapType{ElemType: %s}", child.TypeCode),
 			Imports:    child.Imports,
 		}
 	}
 
-	schemaMap, typeMap, imports := buildObjectMaps(spec, schema)
+	schemaMap, typeMap, imports, _ := buildObjectMaps(spec, schema)
 	return genResult{
-		SchemaCode: fmt.Sprintf("schema.SingleNestedAttribute{Optional: %t, Attributes: %s}", !req, schemaMap),
+		SchemaCode: fmt.Sprintf("schema.SingleNestedAttribute{%s, Attributes: %s}", requiredOptional(req), schemaMap),
 		TypeCode:   fmt.Sprintf("types.ObjectType{AttrTypes: %s}", typeMap),
 		Imports:    imports,
 	}
 }
 
-func buildObjectMaps(spec *openapi3.T, schema *openapi3.Schema) (string, string, map[string]bool) {
+func buildObjectMaps(spec *openapi3.T, schema *openapi3.Schema) (string, string, map[string]bool, bool) {
 	merged := mergeAllOf(spec, schema)
 	keys := make([]string, 0, len(merged.Properties))
 	for k := range merged.Properties {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		return tfName(keys[i]) < tfName(keys[j])
+	})
 
 	childImports := map[string]bool{}
+	hasDynamic := false
 	var schemaBuf bytes.Buffer
 	var typeBuf bytes.Buffer
 
@@ -281,14 +325,18 @@ func buildObjectMaps(spec *openapi3.T, schema *openapi3.Schema) (string, string,
 		for imp := range child.Imports {
 			childImports[imp] = true
 		}
-		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", k, child.SchemaCode))
-		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", k, child.TypeCode))
+		if child.HasDynamic {
+			hasDynamic = true
+		}
+		tfKey := tfName(k)
+		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, child.SchemaCode))
+		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, child.TypeCode))
 	}
 
 	schemaBuf.WriteString("}")
 	typeBuf.WriteString("}")
 
-	return schemaBuf.String(), typeBuf.String(), childImports
+	return schemaBuf.String(), typeBuf.String(), childImports, hasDynamic
 }
 
 func mergeAllOf(spec *openapi3.T, schema *openapi3.Schema) *openapi3.Schema {
@@ -340,6 +388,76 @@ func quoteStrings(values []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+func tfName(apiName string) string {
+	lower := strings.ToLower(apiName)
+	var b strings.Builder
+	for _, r := range lower {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune('_')
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "field"
+	}
+	return out
+}
+
+func buildObjectMeta(spec *openapi3.T, schema *openapi3.Schema) string {
+	merged := mergeAllOf(spec, schema)
+	keys := make([]string, 0, len(merged.Properties))
+	for k := range merged.Properties {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return tfName(keys[i]) < tfName(keys[j])
+	})
+
+	var buf bytes.Buffer
+	buf.WriteString("map[string]*schemaFieldMeta{")
+	for i, k := range keys {
+		if i > 0 {
+			buf.WriteString(" ")
+		}
+		tfKey := tfName(k)
+		metaFields := generateMeta(spec, merged.Properties[k])
+		buf.WriteString(fmt.Sprintf("\"%s\": &schemaFieldMeta{APIName: %q, %s},", tfKey, k, metaFields))
+	}
+	buf.WriteString("}")
+	return buf.String()
+}
+
+func generateMeta(spec *openapi3.T, schemaRef *openapi3.SchemaRef) string {
+	schema := resolveSchema(spec, schemaRef)
+	if len(schema.AllOf) > 0 {
+		schema = mergeAllOf(spec, schema)
+	}
+	if len(schema.OneOf) > 0 || len(schema.AnyOf) > 0 {
+		return `Kind: "dynamic"`
+	}
+	switch {
+	case hasType(schema, "string"), hasType(schema, "integer"), hasType(schema, "number"), hasType(schema, "boolean"):
+		return `Kind: "primitive"`
+	case hasType(schema, "array"):
+		if schema.Items == nil {
+			return `Kind: "list", Elem: &schemaFieldMeta{Kind: "dynamic"}`
+		}
+		elem := generateMeta(spec, schema.Items)
+		return fmt.Sprintf("Kind: \"list\", Elem: &schemaFieldMeta{%s}", elem)
+	case hasType(schema, "object"):
+		if schema.AdditionalProperties.Schema != nil {
+			elem := generateMeta(spec, schema.AdditionalProperties.Schema)
+			return fmt.Sprintf("Kind: \"map\", Elem: &schemaFieldMeta{%s}", elem)
+		}
+		fields := buildObjectMeta(spec, schema)
+		return fmt.Sprintf("Kind: \"object\", Fields: %s", fields)
+	default:
+		return `Kind: "dynamic"`
+	}
+}
+
 func writeRegistry(spec *openapi3.T) {
 	var buf bytes.Buffer
 	buf.WriteString("// Code generated by scripts/gen_schema. DO NOT EDIT.\n")
@@ -352,6 +470,13 @@ func writeRegistry(spec *openapi3.T) {
 	buf.WriteString("\t\"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator\"\n")
 	buf.WriteString("\t\"github.com/hashicorp/terraform-plugin-framework/schema/validator\"\n")
 	buf.WriteString(")\n\n")
+
+	buf.WriteString("type schemaFieldMeta struct {\n")
+	buf.WriteString("\tAPIName string\n")
+	buf.WriteString("\tKind    string\n")
+	buf.WriteString("\tFields  map[string]*schemaFieldMeta\n")
+	buf.WriteString("\tElem    *schemaFieldMeta\n")
+	buf.WriteString("}\n\n")
 
 	buf.WriteString("var schemaAttributesRegistry = map[string]map[string]rschema.Attribute{\n")
 	for name, ref := range spec.Components.Schemas {
@@ -388,6 +513,17 @@ func writeRegistry(spec *openapi3.T) {
 	}
 	buf.WriteString("}\n\n")
 
+	buf.WriteString("var schemaMetaRegistry = map[string]*schemaFieldMeta{\n")
+	for name, ref := range spec.Components.Schemas {
+		schema := resolveSchema(spec, ref)
+		meta := generateMeta(spec, ref)
+		if schema == nil {
+			continue
+		}
+		buf.WriteString(fmt.Sprintf("\t%q: &schemaFieldMeta{%s},\n", name, meta))
+	}
+	buf.WriteString("}\n\n")
+
 	buf.WriteString("func schemaAttributesFor(name string) (map[string]rschema.Attribute, bool) {\n")
 	buf.WriteString("\tattrs, ok := schemaAttributesRegistry[name]\n")
 	buf.WriteString("\treturn attrs, ok\n")
@@ -396,6 +532,11 @@ func writeRegistry(spec *openapi3.T) {
 	buf.WriteString("func schemaAttributesForDataSource(name string) (map[string]dschema.Attribute, bool) {\n")
 	buf.WriteString("\tattrs, ok := datasourceAttributesRegistry[name]\n")
 	buf.WriteString("\treturn attrs, ok\n")
+	buf.WriteString("}\n\n")
+
+	buf.WriteString("func schemaMetaFor(name string) (*schemaFieldMeta, bool) {\n")
+	buf.WriteString("\tmeta, ok := schemaMetaRegistry[name]\n")
+	buf.WriteString("\treturn meta, ok\n")
 	buf.WriteString("}\n\n")
 
 	buf.WriteString("func mustSchemaAttrTypes(name string) map[string]attr.Type {\n")

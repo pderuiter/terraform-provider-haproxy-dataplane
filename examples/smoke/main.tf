@@ -24,7 +24,9 @@ resource "haproxy-dataplane_backend" "smoke" {
   name = "be_smoke"
   spec = {
     mode    = "http"
-    balance = "roundrobin"
+    balance = {
+      algorithm = "roundrobin"
+    }
   }
 }
 
@@ -36,18 +38,18 @@ resource "haproxy-dataplane_frontend" "smoke" {
   }
 }
 
-resource "haproxy-dataplane_bind" "smoke" {
-  frontend = haproxy-dataplane_frontend.smoke.name
-  name     = "smoke"
+resource "haproxy-dataplane_frontend_bind" "smoke" {
+  parent_name = haproxy-dataplane_frontend.smoke.name
+  name        = "smoke"
   spec = {
     address = "*"
     port    = 18080
   }
 }
 
-resource "haproxy-dataplane_server" "smoke" {
-  backend = haproxy-dataplane_backend.smoke.name
-  name    = "s1"
+resource "haproxy-dataplane_backend_server" "smoke" {
+  parent_name = haproxy-dataplane_backend.smoke.name
+  name        = "s1"
   spec = {
     address = "127.0.0.1"
     port    = 19000

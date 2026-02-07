@@ -23,8 +23,8 @@ type frontend_ssl_front_useDataSource struct {
 }
 
 type frontend_ssl_front_useDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *frontend_ssl_front_useDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *frontend_ssl_front_useDataSource) Metadata(ctx context.Context, req dat
 }
 
 func (d *frontend_ssl_front_useDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("ssl_front_use")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "ssl_front_use")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *frontend_ssl_front_useDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *frontend_ssl_front_useDataSource) Read(ctx context.Context, req datasou
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("ssl_front_use"), out)
+	items, diags := listObjectsFromSchema(ctx, "ssl_front_use", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"frontend_ssl_front_use"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

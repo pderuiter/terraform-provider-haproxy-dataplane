@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -39,6 +38,9 @@ func (r *global_log_targetResource) Schema(ctx context.Context, req resource.Sch
 		resp.Diagnostics.AddError("Schema not found", "log_target")
 		return
 	}
+	for _, k := range []string{"index"} {
+		delete(attrs, k)
+	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":    schema.StringAttribute{Computed: true},
@@ -49,6 +51,9 @@ func (r *global_log_targetResource) Schema(ctx context.Context, req resource.Sch
 }
 
 func (r *global_log_targetResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -65,30 +70,25 @@ func (r *global_log_targetResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "log_target")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	payload["index"] = int64ToString(plan.Index.ValueInt64())
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/global/log_targets/{index}", map[string]string{
 		"index": int64ToString(plan.Index.ValueInt64()),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Create failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{int64ToString(plan.Index.ValueInt64())}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("log_target"), payload, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -111,9 +111,6 @@ func (r *global_log_targetResource) Read(ctx context.Context, req resource.ReadR
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("log_target"), out, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -123,30 +120,25 @@ func (r *global_log_targetResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "log_target")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	payload["index"] = int64ToString(plan.Index.ValueInt64())
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/global/log_targets/{index}", map[string]string{
 		"index": int64ToString(plan.Index.ValueInt64()),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Update failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{int64ToString(plan.Index.ValueInt64())}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("log_target"), payload, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -156,18 +148,15 @@ func (r *global_log_targetResource) Delete(ctx context.Context, req resource.Del
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/global/log_targets/{index}", map[string]string{
 		"index": int64ToString(state.Index.ValueInt64()),
 	})
-	if err := r.client.DeleteJSON(ctx, path, query, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.DeleteJSON(ctx, path, query, nil)
+	}); err != nil {
 		if client.IsNotFound(err) {
 			return
 		}

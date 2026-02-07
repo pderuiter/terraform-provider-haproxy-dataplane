@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -24,9 +23,9 @@ type frontend_captureResource struct {
 }
 
 type frontend_captureModel struct {
-	ID         types.String `tfsdk:"id"`
-	ParentName types.String `tfsdk:"parent_name"`
-	Spec       types.Object `tfsdk:"spec"`
+	ID         types.String  `tfsdk:"id"`
+	ParentName types.String  `tfsdk:"parent_name"`
+	Spec       types.Dynamic `tfsdk:"spec"`
 }
 
 func (r *frontend_captureResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -34,21 +33,19 @@ func (r *frontend_captureResource) Metadata(ctx context.Context, req resource.Me
 }
 
 func (r *frontend_captureResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attrs, ok := schemaAttributesFor("captures")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "captures")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":          schema.StringAttribute{Computed: true},
 			"parent_name": schema.StringAttribute{Required: true},
-			"spec":        schema.SingleNestedAttribute{Required: true, Attributes: attrs},
+			"spec":        schema.DynamicAttribute{Required: true},
 		},
 	}
 }
 
 func (r *frontend_captureResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -65,29 +62,24 @@ func (r *frontend_captureResource) Create(ctx context.Context, req resource.Crea
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := dynamicToObjectsWithSchema(ctx, plan.Spec, "capture")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/captures", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Create failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("captures"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -101,7 +93,7 @@ func (r *frontend_captureResource) Read(ctx context.Context, req resource.ReadRe
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/captures", map[string]string{
 		"parent_name": state.ParentName.ValueString(),
 	})
-	var out map[string]any
+	var out []map[string]any
 	if err := r.client.GetJSON(ctx, path, query, &out); err != nil {
 		if client.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -110,9 +102,6 @@ func (r *frontend_captureResource) Read(ctx context.Context, req resource.ReadRe
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("captures"), out, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -122,29 +111,24 @@ func (r *frontend_captureResource) Update(ctx context.Context, req resource.Upda
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := dynamicToObjectsWithSchema(ctx, plan.Spec, "capture")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/captures", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Update failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("captures"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 

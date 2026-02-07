@@ -23,9 +23,9 @@ type peer_entryDataSource struct {
 }
 
 type peer_entryDataSourceModel struct {
-	PeerSection types.String `tfsdk:"peer_section"`
-	Items       types.List   `tfsdk:"items"`
-	ID          types.String `tfsdk:"id"`
+	PeerSection types.String  `tfsdk:"peer_section"`
+	Items       types.Dynamic `tfsdk:"items"`
+	ID          types.String  `tfsdk:"id"`
 }
 
 func (d *peer_entryDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -33,21 +33,19 @@ func (d *peer_entryDataSource) Metadata(ctx context.Context, req datasource.Meta
 }
 
 func (d *peer_entryDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("peer_entry")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "peer_entry")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"peer_section": schema.StringAttribute{Required: true},
-			"items":        schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items":        schema.DynamicAttribute{Computed: true},
 			"id":           schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *peer_entryDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -73,9 +71,9 @@ func (d *peer_entryDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("peer_entry"), out)
+	items, diags := listObjectsFromSchema(ctx, "peer_entry", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"peer_entry"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

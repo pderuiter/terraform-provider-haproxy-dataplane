@@ -46,6 +46,9 @@ func (d *globalDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 }
 
 func (d *globalDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,7 +72,7 @@ func (d *globalDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	obj, diags := mapToObject(ctx, mustSchemaAttrTypes("global"), out, []string{})
+	obj, diags := mapToObjectWithSchema(ctx, "global", out, []string{})
 	resp.Diagnostics.Append(diags...)
 	state.Spec = obj
 	state.ID = types.StringValue(strings.Join([]string{"global"}, "/"))

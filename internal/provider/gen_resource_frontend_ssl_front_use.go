@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,6 +39,9 @@ func (r *frontend_ssl_front_useResource) Schema(ctx context.Context, req resourc
 		resp.Diagnostics.AddError("Schema not found", "ssl_front_use")
 		return
 	}
+	for _, k := range []string{"parent_name", "index"} {
+		delete(attrs, k)
+	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":          schema.StringAttribute{Computed: true},
@@ -51,6 +53,9 @@ func (r *frontend_ssl_front_useResource) Schema(ctx context.Context, req resourc
 }
 
 func (r *frontend_ssl_front_useResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -67,31 +72,26 @@ func (r *frontend_ssl_front_useResource) Create(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "ssl_front_use")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	payload["index"] = int64ToString(plan.Index.ValueInt64())
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/ssl_front_uses", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 		"index":       int64ToString(plan.Index.ValueInt64()),
 	})
-	if err := r.client.PostJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PostJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Create failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString(), int64ToString(plan.Index.ValueInt64())}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("ssl_front_use"), payload, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -115,9 +115,6 @@ func (r *frontend_ssl_front_useResource) Read(ctx context.Context, req resource.
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("ssl_front_use"), out, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -127,31 +124,26 @@ func (r *frontend_ssl_front_useResource) Update(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "ssl_front_use")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	payload["index"] = int64ToString(plan.Index.ValueInt64())
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/ssl_front_uses/{index}", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 		"index":       int64ToString(plan.Index.ValueInt64()),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Update failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString(), int64ToString(plan.Index.ValueInt64())}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("ssl_front_use"), payload, []string{"index"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -161,19 +153,16 @@ func (r *frontend_ssl_front_useResource) Delete(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version": []string{int64ToString(version)},
-	}
 	path := buildPath("/services/haproxy/configuration/frontends/{parent_name}/ssl_front_uses/{index}", map[string]string{
 		"parent_name": state.ParentName.ValueString(),
 		"index":       int64ToString(state.Index.ValueInt64()),
 	})
-	if err := r.client.DeleteJSON(ctx, path, query, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version": []string{int64ToString(version)},
+		}
+		return r.client.DeleteJSON(ctx, path, query, nil)
+	}); err != nil {
 		if client.IsNotFound(err) {
 			return
 		}

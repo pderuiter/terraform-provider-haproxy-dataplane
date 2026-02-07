@@ -23,8 +23,8 @@ type frontend_bindDataSource struct {
 }
 
 type frontend_bindDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *frontend_bindDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *frontend_bindDataSource) Metadata(ctx context.Context, req datasource.M
 }
 
 func (d *frontend_bindDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("bind")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "bind")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *frontend_bindDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *frontend_bindDataSource) Read(ctx context.Context, req datasource.ReadR
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("bind"), out)
+	items, diags := listObjectsFromSchema(ctx, "bind", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"frontend_bind"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

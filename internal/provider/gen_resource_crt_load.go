@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,6 +39,9 @@ func (r *crt_loadResource) Schema(ctx context.Context, req resource.SchemaReques
 		resp.Diagnostics.AddError("Schema not found", "crt_load")
 		return
 	}
+	for _, k := range []string{"certificate"} {
+		delete(attrs, k)
+	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":          schema.StringAttribute{Computed: true},
@@ -51,6 +53,9 @@ func (r *crt_loadResource) Schema(ctx context.Context, req resource.SchemaReques
 }
 
 func (r *crt_loadResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -67,30 +72,25 @@ func (r *crt_loadResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "crt_load")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version":   []string{int64ToString(version)},
-		"crt_store": []string{plan.CrtStore.ValueString()},
-	}
 	path := buildPath("/services/haproxy/configuration/crt_loads", map[string]string{
 		"certificate": plan.Certificate.ValueString(),
 	})
-	if err := r.client.PostJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version":   []string{int64ToString(version)},
+			"crt_store": []string{plan.CrtStore.ValueString()},
+		}
+		return r.client.PostJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Create failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.Certificate.ValueString(), plan.CrtStore.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("crt_load"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -115,9 +115,6 @@ func (r *crt_loadResource) Read(ctx context.Context, req resource.ReadRequest, r
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("crt_load"), out, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -127,30 +124,25 @@ func (r *crt_loadResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "crt_load")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version":   []string{int64ToString(version)},
-		"crt_store": []string{plan.CrtStore.ValueString()},
-	}
 	path := buildPath("/services/haproxy/configuration/crt_loads/{certificate}", map[string]string{
 		"certificate": plan.Certificate.ValueString(),
 	})
-	if err := r.client.PutJSON(ctx, path, query, payload, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version":   []string{int64ToString(version)},
+			"crt_store": []string{plan.CrtStore.ValueString()},
+		}
+		return r.client.PutJSON(ctx, path, query, payload, nil)
+	}); err != nil {
 		resp.Diagnostics.AddError("Update failed", err.Error())
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.Certificate.ValueString(), plan.CrtStore.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("crt_load"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -160,19 +152,16 @@ func (r *crt_loadResource) Delete(ctx context.Context, req resource.DeleteReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	version, err := getConfigVersion(ctx, r.client)
-	if err != nil {
-		resp.Diagnostics.AddError("Unable to read configuration version", err.Error())
-		return
-	}
-	query := url.Values{
-		"version":   []string{int64ToString(version)},
-		"crt_store": []string{state.CrtStore.ValueString()},
-	}
 	path := buildPath("/services/haproxy/configuration/crt_loads/{certificate}", map[string]string{
 		"certificate": state.Certificate.ValueString(),
 	})
-	if err := r.client.DeleteJSON(ctx, path, query, nil); err != nil {
+	if err := applyWithVersionRetry(ctx, r.client, func(version int64) error {
+		query := url.Values{
+			"version":   []string{int64ToString(version)},
+			"crt_store": []string{state.CrtStore.ValueString()},
+		}
+		return r.client.DeleteJSON(ctx, path, query, nil)
+	}); err != nil {
 		if client.IsNotFound(err) {
 			return
 		}

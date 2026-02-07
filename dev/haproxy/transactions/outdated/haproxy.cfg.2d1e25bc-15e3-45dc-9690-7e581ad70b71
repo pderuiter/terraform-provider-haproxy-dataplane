@@ -1,0 +1,37 @@
+# _md5hash=1178d32b7d85e192e5953fb57ef5a6be
+# _version=6
+# Dataplaneapi managed File
+# changing file directly can cause a conflict if dataplaneapi is running
+# Minimal HAProxy config for provider development
+
+global
+  daemon
+  maxconn 2000
+  stats socket /var/run/haproxy.sock mode 600 level admin
+  log stdout format raw local0
+
+defaults unnamed_defaults_1
+  mode http
+  log global
+  timeout connect 5s
+  timeout client 30s
+  timeout server 30s
+
+userlist controller
+  user admin insecure-password qX4LBHaPpwd
+
+frontend fe_http from unnamed_defaults_1
+  bind *:8080
+  default_backend be_http
+
+frontend fe_smoke
+  mode http
+  default_backend be_smoke
+
+backend be_http from unnamed_defaults_1
+  server s1 127.0.0.1:9000 check
+
+backend be_smoke
+  mode http
+  balance roundrobin
+  server s1 127.0.0.1:19000

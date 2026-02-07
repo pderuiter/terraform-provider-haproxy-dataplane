@@ -23,8 +23,8 @@ type runtime_acl_entryDataSource struct {
 }
 
 type runtime_acl_entryDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *runtime_acl_entryDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *runtime_acl_entryDataSource) Metadata(ctx context.Context, req datasour
 }
 
 func (d *runtime_acl_entryDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("acl_file_entry")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "acl_file_entry")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *runtime_acl_entryDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *runtime_acl_entryDataSource) Read(ctx context.Context, req datasource.R
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("acl_file_entry"), out)
+	items, diags := listObjectsFromSchema(ctx, "acl_file_entry", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"runtime_acl_entry"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

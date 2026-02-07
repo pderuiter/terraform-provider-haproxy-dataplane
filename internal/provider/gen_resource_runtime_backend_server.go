@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,6 +39,9 @@ func (r *runtime_backend_serverResource) Schema(ctx context.Context, req resourc
 		resp.Diagnostics.AddError("Schema not found", "runtime_add_server")
 		return
 	}
+	for _, k := range []string{"parent_name", "name"} {
+		delete(attrs, k)
+	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":          schema.StringAttribute{Computed: true},
@@ -51,6 +53,9 @@ func (r *runtime_backend_serverResource) Schema(ctx context.Context, req resourc
 }
 
 func (r *runtime_backend_serverResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -67,7 +72,7 @@ func (r *runtime_backend_serverResource) Create(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "runtime_add_server")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -83,8 +88,6 @@ func (r *runtime_backend_serverResource) Create(ctx context.Context, req resourc
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString(), plan.Name.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("runtime_add_server"), payload, []string{"name"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -108,9 +111,6 @@ func (r *runtime_backend_serverResource) Read(ctx context.Context, req resource.
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("runtime_add_server"), out, []string{"name"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -120,7 +120,7 @@ func (r *runtime_backend_serverResource) Update(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := objectToMapWithSchema(ctx, plan.Spec, "runtime_add_server")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -136,8 +136,6 @@ func (r *runtime_backend_serverResource) Update(ctx context.Context, req resourc
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString(), plan.Name.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("runtime_add_server"), payload, []string{"name"})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 

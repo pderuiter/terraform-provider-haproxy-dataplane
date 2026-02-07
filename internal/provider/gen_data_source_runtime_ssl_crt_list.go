@@ -23,8 +23,8 @@ type runtime_ssl_crt_listDataSource struct {
 }
 
 type runtime_ssl_crt_listDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *runtime_ssl_crt_listDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *runtime_ssl_crt_listDataSource) Metadata(ctx context.Context, req datas
 }
 
 func (d *runtime_ssl_crt_listDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("ssl_crt_list")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "ssl_crt_list")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *runtime_ssl_crt_listDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *runtime_ssl_crt_listDataSource) Read(ctx context.Context, req datasourc
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("ssl_crt_list"), out)
+	items, diags := listObjectsFromSchema(ctx, "ssl_crt_list", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"runtime_ssl_crt_list"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

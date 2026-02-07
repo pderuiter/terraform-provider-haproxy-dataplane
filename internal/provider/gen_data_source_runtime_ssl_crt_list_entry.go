@@ -23,9 +23,9 @@ type runtime_ssl_crt_list_entryDataSource struct {
 }
 
 type runtime_ssl_crt_list_entryDataSourceModel struct {
-	Name  types.String `tfsdk:"name"`
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Name  types.String  `tfsdk:"name"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *runtime_ssl_crt_list_entryDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -33,21 +33,19 @@ func (d *runtime_ssl_crt_list_entryDataSource) Metadata(ctx context.Context, req
 }
 
 func (d *runtime_ssl_crt_list_entryDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("ssl_crt_list_entry")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "ssl_crt_list_entry")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"name":  schema.StringAttribute{Required: true},
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *runtime_ssl_crt_list_entryDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -73,9 +71,9 @@ func (d *runtime_ssl_crt_list_entryDataSource) Read(ctx context.Context, req dat
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("ssl_crt_list_entry"), out)
+	items, diags := listObjectsFromSchema(ctx, "ssl_crt_list_entry", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"runtime_ssl_crt_list_entry"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

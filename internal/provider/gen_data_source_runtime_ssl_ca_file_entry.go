@@ -50,6 +50,9 @@ func (d *runtime_ssl_ca_file_entryDataSource) Schema(ctx context.Context, req da
 }
 
 func (d *runtime_ssl_ca_file_entryDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -76,7 +79,7 @@ func (d *runtime_ssl_ca_file_entryDataSource) Read(ctx context.Context, req data
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	obj, diags := mapToObject(ctx, mustSchemaAttrTypes("ssl_certificate"), out, []string{})
+	obj, diags := mapToObjectWithSchema(ctx, "ssl_certificate", out, []string{})
 	resp.Diagnostics.Append(diags...)
 	state.Spec = obj
 	state.ID = types.StringValue(strings.Join([]string{"runtime_ssl_ca_file_entry"}, "/"))

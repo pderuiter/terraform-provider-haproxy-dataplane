@@ -32,6 +32,12 @@ def value_string_expr(var: str, param_name: str) -> str:
         return f'int64ToString({var}.ValueInt64())'
     return f'{var}.ValueString()'
 
+def tf_param_name(param_name: str) -> str:
+    name = re.sub(r'[^a-z0-9_]', '_', param_name.lower())
+    if name == 'id':
+        return 'param_id'
+    return name
+
 paths = SPEC['paths']
 config_paths = {p: paths[p] for p in paths if p.startswith('/services/haproxy/configuration/')}
 
@@ -124,25 +130,26 @@ for d in datasources:
 
     fields = []
     for p in path_params + query_params:
+        tf_name = tf_param_name(p)
         go_type = attr_go_type(p)
-        fields.append((go_ident(p), go_type, p))
+        fields.append((go_ident(tf_name), go_type, tf_name, p))
 
     param_schema_lines = []
     for p in path_params + query_params:
         attr_type = 'String' if p != 'index' else 'Int64'
-        param_schema_lines.append(f"\t\t\t\"{p}\": schema.{attr_type}Attribute{{Required: true}},\n")
+        param_schema_lines.append(f"\t\t\t\"{tf_param_name(p)}\": schema.{attr_type}Attribute{{Required: true}},\n")
 
     def query_lines(var_prefix: str):
         lines = []
         for p in query_params:
-            field = go_ident(p)
+            field = go_ident(tf_param_name(p))
             lines.append(f"\t\t\t\"{p}\": []string{{{value_string_expr(var_prefix+field, p)}}},\n")
         return lines
 
     def path_lines(var_prefix: str):
         lines = []
         for p in path_params:
-            field = go_ident(p)
+            field = go_ident(tf_param_name(p))
             lines.append(f"\t\t\t\"{p}\": {value_string_expr(var_prefix+field, p)},\n")
         return lines
 
@@ -155,12 +162,12 @@ for d in datasources:
         f.write(f"type {name}DataSource struct {{\n\tclient *client.Client\n}}\n\n")
 
         f.write(f"type {name}DataSourceModel struct {{\n")
-        for field, go_type, tf_name in fields:
+        for field, go_type, tf_name, _ in fields:
             f.write(f"\t{field} {go_type} `tfsdk:\"{tf_name}\"`\n")
         if d['is_scalar']:
             f.write("\tValue types.Int64 `tfsdk:\"value\"`\n")
         elif d['is_array']:
-            f.write("\tItems types.List `tfsdk:\"items\"`\n")
+            f.write("\tItems types.Dynamic `tfsdk:\"items\"`\n")
         else:
             f.write("\tSpec types.Object `tfsdk:\"spec\"`\n")
         f.write("\tID types.String `tfsdk:\"id\"`\n}\n\n")
@@ -169,22 +176,25 @@ for d in datasources:
         f.write(f"func (d *{name}DataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {{\n")
         if d['is_scalar']:
             f.write("\tresp.Schema = schema.Schema{\n\t\tAttributes: map[string]schema.Attribute{\n")
-        else:
+        elif not d['is_array']:
             f.write("\tattrs, ok := schemaAttributesForDataSource(\"%s\")\n" % d['schema'])
             f.write("\tif !ok {\n\t\tresp.Diagnostics.AddError(\"Schema not found\", \"%s\")\n\t\treturn\n\t}\n" % d['schema'])
+            f.write("\tresp.Schema = schema.Schema{\n\t\tAttributes: map[string]schema.Attribute{\n")
+        else:
             f.write("\tresp.Schema = schema.Schema{\n\t\tAttributes: map[string]schema.Attribute{\n")
         for line in param_schema_lines:
             f.write(line)
         if d['is_scalar']:
             f.write("\t\t\t\"value\": schema.Int64Attribute{Computed: true},\n")
         elif d['is_array']:
-            f.write("\t\t\t\"items\": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},\n")
+            f.write("\t\t\t\"items\": schema.DynamicAttribute{Computed: true},\n")
         else:
             f.write("\t\t\t\"spec\": schema.SingleNestedAttribute{Computed: true, Attributes: attrs},\n")
         f.write("\t\t\t\"id\": schema.StringAttribute{Computed: true},\n")
         f.write("\t\t},\n\t}\n}\n\n")
 
         f.write(f"func (d *{name}DataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {{\n")
+        f.write("\tif req.ProviderData == nil {\n\t\treturn\n\t}\n")
         f.write("\tclient, diags := getClient(req.ProviderData)\n\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n\tif client != nil {\n\t\td.client = client\n\t}\n}\n\n")
 
         f.write(f"func (d *{name}DataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {{\n")
@@ -202,11 +212,11 @@ for d in datasources:
             f.write("\tstate.Value = types.Int64Value(out)\n")
         elif d['is_array']:
             f.write("\tvar out []map[string]any\n\tif err := d.client.GetJSON(ctx, path, query, &out); err != nil {\n\t\tresp.Diagnostics.AddError(\"Read failed\", err.Error())\n\t\treturn\n\t}\n")
-            f.write("\titems, diags := listObjectsFrom(ctx, mustSchemaAttrTypes(\"%s\"), out)\n" % d['schema'])
-            f.write("\tresp.Diagnostics.Append(diags...)\n\tstate.Items = items\n")
+            f.write("\titems, diags := listObjectsFromSchema(ctx, \"%s\", out)\n" % d['schema'])
+            f.write("\tresp.Diagnostics.Append(diags...)\n\tstate.Items = types.DynamicValue(items)\n")
         else:
             f.write("\tvar out map[string]any\n\tif err := d.client.GetJSON(ctx, path, query, &out); err != nil {\n\t\tresp.Diagnostics.AddError(\"Read failed\", err.Error())\n\t\treturn\n\t}\n")
-            f.write("\tobj, diags := mapToObject(ctx, mustSchemaAttrTypes(\"%s\"), out, []string{})\n" % d['schema'])
+            f.write("\tobj, diags := mapToObjectWithSchema(ctx, \"%s\", out, []string{})\n" % d['schema'])
             f.write("\tresp.Diagnostics.Append(diags...)\n\tstate.Spec = obj\n")
         f.write('\tstate.ID = types.StringValue(strings.Join([]string{"%s"}, "/"))\n' % name)
         f.write("\tresp.Diagnostics.Append(resp.State.Set(ctx, &state)...)\n}\n")

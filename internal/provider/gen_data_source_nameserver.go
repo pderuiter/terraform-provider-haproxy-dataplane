@@ -23,9 +23,9 @@ type nameserverDataSource struct {
 }
 
 type nameserverDataSourceModel struct {
-	Resolver types.String `tfsdk:"resolver"`
-	Items    types.List   `tfsdk:"items"`
-	ID       types.String `tfsdk:"id"`
+	Resolver types.String  `tfsdk:"resolver"`
+	Items    types.Dynamic `tfsdk:"items"`
+	ID       types.String  `tfsdk:"id"`
 }
 
 func (d *nameserverDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -33,21 +33,19 @@ func (d *nameserverDataSource) Metadata(ctx context.Context, req datasource.Meta
 }
 
 func (d *nameserverDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("nameserver")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "nameserver")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"resolver": schema.StringAttribute{Required: true},
-			"items":    schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items":    schema.DynamicAttribute{Computed: true},
 			"id":       schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *nameserverDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -73,9 +71,9 @@ func (d *nameserverDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("nameserver"), out)
+	items, diags := listObjectsFromSchema(ctx, "nameserver", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"nameserver"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

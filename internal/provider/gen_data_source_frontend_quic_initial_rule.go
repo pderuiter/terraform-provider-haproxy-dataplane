@@ -23,8 +23,8 @@ type frontend_quic_initial_ruleDataSource struct {
 }
 
 type frontend_quic_initial_ruleDataSourceModel struct {
-	Items types.List   `tfsdk:"items"`
-	ID    types.String `tfsdk:"id"`
+	Items types.Dynamic `tfsdk:"items"`
+	ID    types.String  `tfsdk:"id"`
 }
 
 func (d *frontend_quic_initial_ruleDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -32,20 +32,18 @@ func (d *frontend_quic_initial_ruleDataSource) Metadata(ctx context.Context, req
 }
 
 func (d *frontend_quic_initial_ruleDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("quic_initial_rule")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "quic_initial_rule")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"items": schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items": schema.DynamicAttribute{Computed: true},
 			"id":    schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *frontend_quic_initial_ruleDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,9 +67,9 @@ func (d *frontend_quic_initial_ruleDataSource) Read(ctx context.Context, req dat
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("quic_initial_rule"), out)
+	items, diags := listObjectsFromSchema(ctx, "quic_initial_rule", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"frontend_quic_initial_rule"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

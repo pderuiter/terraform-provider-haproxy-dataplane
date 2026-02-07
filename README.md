@@ -50,7 +50,9 @@ resource "haproxy-dataplane_backend" "app" {
   name = "be_app"
   spec = {
     mode    = "http"
-    balance = "roundrobin"
+    balance = {
+      algorithm = "roundrobin"
+    }
   }
 }
 
@@ -62,18 +64,18 @@ resource "haproxy-dataplane_frontend" "app" {
   }
 }
 
-resource "haproxy-dataplane_bind" "app" {
-  frontend = haproxy-dataplane_frontend.app.name
-  name     = "app"
+resource "haproxy-dataplane_frontend_bind" "app" {
+  parent_name = haproxy-dataplane_frontend.app.name
+  name        = "app"
   spec = {
     address = "*"
     port    = 8080
   }
 }
 
-resource "haproxy-dataplane_server" "s1" {
-  backend = haproxy-dataplane_backend.app.name
-  name    = "s1"
+resource "haproxy-dataplane_backend_server" "s1" {
+  parent_name = haproxy-dataplane_backend.app.name
+  name        = "s1"
   spec = {
     address = "127.0.0.1"
     port    = 9000

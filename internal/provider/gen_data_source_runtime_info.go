@@ -46,6 +46,9 @@ func (d *runtime_infoDataSource) Schema(ctx context.Context, req datasource.Sche
 }
 
 func (d *runtime_infoDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,7 +72,7 @@ func (d *runtime_infoDataSource) Read(ctx context.Context, req datasource.ReadRe
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	obj, diags := mapToObject(ctx, mustSchemaAttrTypes("process_info"), out, []string{})
+	obj, diags := mapToObjectWithSchema(ctx, "process_info", out, []string{})
 	resp.Diagnostics.Append(diags...)
 	state.Spec = obj
 	state.ID = types.StringValue(strings.Join([]string{"runtime_info"}, "/"))

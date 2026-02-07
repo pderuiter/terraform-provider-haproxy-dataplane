@@ -41,6 +41,9 @@ func (d *versionDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 }
 
 func (d *versionDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

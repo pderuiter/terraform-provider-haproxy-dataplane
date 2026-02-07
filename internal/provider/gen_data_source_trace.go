@@ -46,6 +46,9 @@ func (d *traceDataSource) Schema(ctx context.Context, req datasource.SchemaReque
 }
 
 func (d *traceDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -69,7 +72,7 @@ func (d *traceDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	obj, diags := mapToObject(ctx, mustSchemaAttrTypes("traces"), out, []string{})
+	obj, diags := mapToObjectWithSchema(ctx, "traces", out, []string{})
 	resp.Diagnostics.Append(diags...)
 	state.Spec = obj
 	state.ID = types.StringValue(strings.Join([]string{"trace"}, "/"))

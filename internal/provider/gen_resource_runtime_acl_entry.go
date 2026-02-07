@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -24,9 +23,9 @@ type runtime_acl_entryResource struct {
 }
 
 type runtime_acl_entryModel struct {
-	ID         types.String `tfsdk:"id"`
-	ParentName types.String `tfsdk:"parent_name"`
-	Spec       types.Object `tfsdk:"spec"`
+	ID         types.String  `tfsdk:"id"`
+	ParentName types.String  `tfsdk:"parent_name"`
+	Spec       types.Dynamic `tfsdk:"spec"`
 }
 
 func (r *runtime_acl_entryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -34,21 +33,19 @@ func (r *runtime_acl_entryResource) Metadata(ctx context.Context, req resource.M
 }
 
 func (r *runtime_acl_entryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attrs, ok := schemaAttributesFor("acl_files_entries")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "acl_files_entries")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":          schema.StringAttribute{Computed: true},
 			"parent_name": schema.StringAttribute{Required: true},
-			"spec":        schema.SingleNestedAttribute{Required: true, Attributes: attrs},
+			"spec":        schema.DynamicAttribute{Required: true},
 		},
 	}
 }
 
 func (r *runtime_acl_entryResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -65,7 +62,7 @@ func (r *runtime_acl_entryResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := dynamicToObjectsWithSchema(ctx, plan.Spec, "acl_file_entry")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -79,8 +76,6 @@ func (r *runtime_acl_entryResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("acl_files_entries"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -94,7 +89,7 @@ func (r *runtime_acl_entryResource) Read(ctx context.Context, req resource.ReadR
 	path := buildPath("/services/haproxy/runtime/acls/{parent_name}/entries", map[string]string{
 		"parent_name": state.ParentName.ValueString(),
 	})
-	var out map[string]any
+	var out []map[string]any
 	if err := r.client.GetJSON(ctx, path, query, &out); err != nil {
 		if client.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -103,9 +98,6 @@ func (r *runtime_acl_entryResource) Read(ctx context.Context, req resource.ReadR
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	var diags diag.Diagnostics
-	state.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("acl_files_entries"), out, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -115,7 +107,7 @@ func (r *runtime_acl_entryResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload, diags := objectToMap(ctx, plan.Spec)
+	payload, diags := dynamicToObjectsWithSchema(ctx, plan.Spec, "acl_file_entry")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -129,8 +121,6 @@ func (r *runtime_acl_entryResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 	plan.ID = types.StringValue(strings.Join([]string{plan.ParentName.ValueString()}, "/"))
-	plan.Spec, diags = mapToObject(ctx, mustSchemaAttrTypes("acl_files_entries"), payload, []string{})
-	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 

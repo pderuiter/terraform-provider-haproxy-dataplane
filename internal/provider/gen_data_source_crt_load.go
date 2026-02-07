@@ -23,9 +23,9 @@ type crt_loadDataSource struct {
 }
 
 type crt_loadDataSourceModel struct {
-	CrtStore types.String `tfsdk:"crt_store"`
-	Items    types.List   `tfsdk:"items"`
-	ID       types.String `tfsdk:"id"`
+	CrtStore types.String  `tfsdk:"crt_store"`
+	Items    types.Dynamic `tfsdk:"items"`
+	ID       types.String  `tfsdk:"id"`
 }
 
 func (d *crt_loadDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -33,21 +33,19 @@ func (d *crt_loadDataSource) Metadata(ctx context.Context, req datasource.Metada
 }
 
 func (d *crt_loadDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	attrs, ok := schemaAttributesForDataSource("crt_load")
-	if !ok {
-		resp.Diagnostics.AddError("Schema not found", "crt_load")
-		return
-	}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"crt_store": schema.StringAttribute{Required: true},
-			"items":     schema.ListNestedAttribute{Computed: true, NestedObject: schema.NestedAttributeObject{Attributes: attrs}},
+			"items":     schema.DynamicAttribute{Computed: true},
 			"id":        schema.StringAttribute{Computed: true},
 		},
 	}
 }
 
 func (d *crt_loadDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 	client, diags := getClient(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -73,9 +71,9 @@ func (d *crt_loadDataSource) Read(ctx context.Context, req datasource.ReadReques
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	items, diags := listObjectsFrom(ctx, mustSchemaAttrTypes("crt_load"), out)
+	items, diags := listObjectsFromSchema(ctx, "crt_load", out)
 	resp.Diagnostics.Append(diags...)
-	state.Items = items
+	state.Items = types.DynamicValue(items)
 	state.ID = types.StringValue(strings.Join([]string{"crt_load"}, "/"))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
