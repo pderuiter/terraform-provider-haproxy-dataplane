@@ -32,6 +32,11 @@ def value_string_expr(var: str, param_name: str) -> str:
         return f'int64ToString({var}.ValueInt64())'
     return f'{var}.ValueString()'
 
+def tf_param_name(param_name: str) -> str:
+    if param_name == 'id':
+        return 'runtime_id'
+    return param_name
+
 paths = SPEC['paths']
 runtime_paths = {p: paths[p] for p in paths if p.startswith('/services/haproxy/runtime/')}
 
@@ -145,29 +150,37 @@ for r in resources:
 
     fields = []
     for p in path_params + query_params:
+        tf_name = tf_param_name(p)
         go_type = attr_go_type(p)
-        fields.append((go_ident(p), go_type, p))
+        fields.append((go_ident(tf_name), go_type, tf_name, p))
 
     param_schema_lines = []
+    seen_params = set()
     for p in path_params + query_params:
+        tf_name = tf_param_name(p)
+        if tf_name in seen_params:
+            continue
+        seen_params.add(tf_name)
         attr_type = 'String' if p != 'index' else 'Int64'
-        param_schema_lines.append(f"\t\t\t\"{p}\": schema.{attr_type}Attribute{{Required: true}},\n")
+        param_schema_lines.append(f"\t\t\t\"{tf_name}\": schema.{attr_type}Attribute{{Required: true}},\n")
 
     def query_lines(var_prefix: str):
         lines = []
         for p in query_params:
-            field = go_ident(p)
+            tf_name = tf_param_name(p)
+            field = go_ident(tf_name)
             lines.append(f"\t\t\t\"{p}\": []string{{{value_string_expr(var_prefix+field, p)}}},\n")
         return lines
 
     def path_lines(var_prefix: str):
         lines = []
         for p in path_params:
-            field = go_ident(p)
+            tf_name = tf_param_name(p)
+            field = go_ident(tf_name)
             lines.append(f"\t\t\t\"{p}\": {value_string_expr(var_prefix+field, p)},\n")
         return lines
 
-    id_parts = [f"{value_string_expr('plan.'+go_ident(p), p)}" for p in path_params + query_params]
+    id_parts = [f"{value_string_expr('plan.'+go_ident(tf_param_name(p)), p)}" for p in path_params + query_params]
     id_expr = '"/".join([])' if not id_parts else 'strings.Join([]string{' + ', '.join(id_parts) + '}, "/")'
 
     drop_keys = [f"\"{p}\"" for p in path_params if p in ['name', 'index', 'id']]
@@ -181,7 +194,7 @@ for r in resources:
         f.write(f"func New{type_name}Resource() resource.Resource {{\n\treturn &{name}Resource{{}}\n}}\n\n")
         f.write(f"type {name}Resource struct {{\n\tclient *client.Client\n}}\n\n")
         f.write(f"type {name}Model struct {{\n\tID types.String `tfsdk:\"id\"`\n")
-        for field, go_type, tf_name in fields:
+        for field, go_type, tf_name, _ in fields:
             f.write(f"\t{field} {go_type} `tfsdk:\"{tf_name}\"`\n")
         f.write("\tSpec types.Object `tfsdk:\"spec\"`\n}\n\n")
 
@@ -205,7 +218,7 @@ for r in resources:
         f.write("\tpayload, diags := objectToMap(ctx, plan.Spec)\n\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
         for p in path_params:
             if p in ['name', 'index', 'id']:
-                field = go_ident(p)
+                field = go_ident(tf_param_name(p))
                 f.write(f"\tpayload[\"{p}\"] = {value_string_expr('plan.'+field, p)}\n")
         f.write("\tquery := url.Values{\n")
         for line in query_lines('plan.'):
@@ -246,7 +259,7 @@ for r in resources:
             f.write("\tpayload, diags := objectToMap(ctx, plan.Spec)\n\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
             for p in path_params:
                 if p in ['name', 'index', 'id']:
-                    field = go_ident(p)
+                    field = go_ident(tf_param_name(p))
                     f.write(f"\tpayload[\"{p}\"] = {value_string_expr('plan.'+field, p)}\n")
             f.write("\tquery := url.Values{\n")
             for line in query_lines('plan.'):
@@ -264,7 +277,7 @@ for r in resources:
             f.write("\tpayload, diags := objectToMap(ctx, plan.Spec)\n\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
             for p in path_params:
                 if p in ['name', 'index', 'id']:
-                    field = go_ident(p)
+                    field = go_ident(tf_param_name(p))
                     f.write(f"\tpayload[\"{p}\"] = {value_string_expr('plan.'+field, p)}\n")
             f.write("\tquery := url.Values{\n")
             for line in query_lines('plan.'):

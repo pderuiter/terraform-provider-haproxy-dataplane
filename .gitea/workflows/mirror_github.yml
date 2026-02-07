@@ -1,0 +1,35 @@
+name: Mirror to GitHub
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '**'
+  workflow_dispatch: {}
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "gitea-mirror"
+          git config user.email "gitea-mirror@localhost"
+
+      - name: Push to GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
+        run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "GITHUB_TOKEN secret is not set" >&2
+            exit 1
+          fi
+          git remote add github https://x-access-token:${GITHUB_TOKEN}@github.com/pderuiter/terraform-provider-haproxy-dataplane.git
+          git push --prune github "refs/heads/*:refs/heads/*"
+          git push --prune github "refs/tags/*:refs/tags/*"
