@@ -72,11 +72,11 @@ jobs:
       - name: Create and Push Tag
         if: ${{ steps.next_tag.outputs.skip != 'true' }}
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_KEY }}
+          GITEA_TOKEN: ${{ secrets.GIT_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "$GITEA_TOKEN" ]; then
-            echo "GITEA_KEY secret is not set" >&2
+            echo "GIT_TOKEN secret is not set" >&2
             exit 1
           fi
 
