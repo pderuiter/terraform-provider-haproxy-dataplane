@@ -18,6 +18,14 @@ If no tags exist, the workflow starts with `v0.1.0`.
 ## Terraform Registry
 The Terraform Registry consumes SemVer tags (e.g. `v1.2.3`).
 These tags are pushed automatically by the `Auto Tag (SemVer)` workflow.
+Release artifacts are built on GitHub and must include the provider binaries,
+`SHA256SUMS`, `SHA256SUMS.sig`, and the registry manifest.
+
+## GitHub Release Signing
+GitHub Actions expects the following secrets to sign release artifacts:
+
+- `GPG_PRIVATE_KEY`
+- `GPG_PASSPHRASE` (optional if the key is not passphrase-protected)
 
 ## Notes
 - If the head commit already has a tag, the workflow skips.

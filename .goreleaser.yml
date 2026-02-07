@@ -7,7 +7,7 @@ before:
 builds:
   - id: terraform-provider-haproxy-dataplane
     main: .
-    binary: terraform-provider-haproxy-dataplane
+    binary: terraform-provider-haproxy-dataplane_v{{ .Version }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -28,6 +28,24 @@ archives:
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
+
+signs:
+  - artifacts: checksum
+    args:
+      - '--batch'
+      - '--yes'
+      - '--detach-sign'
+      - '--local-user'
+      - '{{ .Env.GPG_FINGERPRINT }}'
+      - '--output'
+      - '${signature}'
+      - '${artifact}'
 
 release:
   draft: false
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
