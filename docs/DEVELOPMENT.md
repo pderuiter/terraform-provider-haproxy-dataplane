@@ -23,9 +23,19 @@ The sample `dev/haproxy/haproxy.cfg` includes a runtime stats socket, which the 
 go build ./...
 ```
 
-## Provider Acceptance Tests (Planned)
+## Smoke Tests (Docker)
 
-Acceptance tests will run against the dockerized HAProxy instance and apply Terraform configurations to verify CRUD for each resource.
+Run the minimal smoke test against the local Docker environment:
+
+```bash
+./scripts/smoke.sh
+```
+
+This builds the provider, starts the HAProxy container, applies `examples/smoke/main.tf`, and then destroys it.
+
+## Runtime Resources
+
+Runtime resources map to Data Plane API runtime endpoints. If a runtime endpoint uses a path parameter named `id`, the Terraform attribute is named `runtime_id` to avoid colliding with the Terraform `id`.
 
 ## OpenAPI Schema Updates
 

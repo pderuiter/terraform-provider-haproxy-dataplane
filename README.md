@@ -4,7 +4,7 @@ This provider manages HAProxy configuration via the HAProxy Data Plane API.
 
 ## Status
 
-This is an initial implementation focused on core configuration resources. The next iterations will expand coverage to all Data Plane API configuration objects and add data sources and acceptance tests. The provider is designed to be extended using the Data Plane API specification.
+This provider is generated from the HAProxy Data Plane API OpenAPI spec and includes configuration resources, runtime resources, and data sources. The runtime coverage targets the Data Plane API runtime endpoints.
 
 ## Requirements
 
@@ -95,14 +95,32 @@ go build ./...
 go test ./...
 ```
 
+## Runtime Resources
+
+Runtime resources map to Data Plane API runtime endpoints. If a runtime endpoint uses a path parameter named `id`, the Terraform attribute is named `runtime_id` to avoid colliding with the Terraform `id`.
+
+Examples:
+- `haproxy-dataplane_runtime_map`
+- `haproxy-dataplane_runtime_map_entry` (uses `runtime_id`)
+- `haproxy-dataplane_runtime_acl_entry` (uses `runtime_id`)
+- `haproxy-dataplane_runtime_backend_server`
+
+## Smoke Tests (Docker)
+
+Run the local smoke test with Docker and a local provider build:
+
+```bash
+./scripts/smoke.sh
+```
+
 ## Notes
 
 - `spec` matches the object shape expected by the Data Plane API endpoint.
 - The provider automatically fetches the configuration version before applying changes.
+- Runtime resources use `runtime_id` when the API path parameter is named `id`.
 
 ## Roadmap (Next Iterations)
 
-- Expand resource coverage to all Data Plane API configuration objects.
-- Add data sources for read-only use cases.
-- Add acceptance tests (docker-based) and CI.
-- Add code generation pipeline from OpenAPI specification.
+- Harden runtime coverage and acceptance tests.
+- Improve registry documentation and examples.
+- Expand CI coverage.
