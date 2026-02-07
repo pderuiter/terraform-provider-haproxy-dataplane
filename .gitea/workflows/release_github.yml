@@ -42,8 +42,10 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean --parallelism=1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
           GITHUB_REPOSITORY: pderuiter/terraform-provider-haproxy-dataplane
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          GOFLAGS: -p=1
+          GOMAXPROCS: 2
