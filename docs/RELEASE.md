@@ -1,15 +1,24 @@
-# Release and Registry
+# Release & Versioning
 
-## GitHub Releases
+This provider uses automated Semantic Versioning with Git tags created on every commit to `main`.
 
-Tag releases with `vX.Y.Z` and push to GitHub. The `release` workflow runs GoReleaser to build the provider artifacts and publish a GitHub Release with checksums.
+## How versions are computed
+The auto-tag workflow inspects commit messages since the last tag and determines the bump:
+
+- **Major**: commit message contains `BREAKING CHANGE` or `!:` (for example `feat!: ...`)
+- **Minor**: commit subject matches `feat:` or `feat(scope):`
+- **Patch**: any other change
+
+If no tags exist, the workflow starts with `v0.1.0`.
+
+## Requirements
+- Commit messages should follow Conventional Commits to get the expected bump behavior.
+- Tags are created in Gitea and mirrored to GitHub via the mirror workflow.
 
 ## Terraform Registry
+The Terraform Registry consumes SemVer tags (e.g. `v1.2.3`).
+These tags are pushed automatically by the `Auto Tag (SemVer)` workflow.
 
-To publish to the Terraform Registry:
-
-1. Ensure the repository is public on GitHub.
-2. Create a GitHub Release with tag `vX.Y.Z` (the workflow does this automatically).
-3. Follow the Terraform Registry publisher onboarding for provider verification.
-
-This provider uses standard Terraform provider packaging (zipped binaries + checksums).
+## Notes
+- If the head commit already has a tag, the workflow skips.
+- If the computed tag already exists, the workflow skips.
