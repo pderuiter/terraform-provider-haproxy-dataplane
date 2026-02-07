@@ -56,3 +56,6 @@ release:
   extra_files:
     - glob: terraform-registry-manifest.json
       name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
+  github:
+    owner: pderuiter
+    name: terraform-provider-haproxy-dataplane
