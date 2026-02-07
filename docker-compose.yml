@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  haproxy:
+    image: haproxytech/haproxy:3.0-s6
+    ports:
+      - "5555:5555"
+      - "8080:8080"
+    volumes:
+      - ./dev/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./dev/dataplaneapi.yml:/etc/haproxy/dataplaneapi.yml:ro

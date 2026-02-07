@@ -1,0 +1,30 @@
+name: mirror
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Mirror to Gitea
+        env:
+          GITEA_SSH_KEY: ${{ secrets.GITEA_SSH_KEY }}
+          GITEA_HOST: ${{ secrets.GITEA_HOST }}
+          GITEA_REPO: ${{ secrets.GITEA_REPO }}
+        run: |
+          if [ -z "$GITEA_SSH_KEY" ] || [ -z "$GITEA_HOST" ] || [ -z "$GITEA_REPO" ]; then
+            echo "Gitea secrets not configured; skipping."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$GITEA_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t rsa $GITEA_HOST >> ~/.ssh/known_hosts
+          git remote add gitea git@$GITEA_HOST:$GITEA_REPO
+          git push gitea HEAD:main --tags
