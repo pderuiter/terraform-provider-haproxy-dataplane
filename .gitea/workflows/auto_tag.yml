@@ -1,0 +1,87 @@
+name: Auto Tag (SemVer)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "gitea-auto-tag"
+          git config user.email "gitea-auto-tag@localhost"
+
+      - name: Determine Next Tag
+        id: next_tag
+        run: |
+          set -euo pipefail
+
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            echo "HEAD already has a tag; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          last_tag=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
+
+          if [ -z "$last_tag" ]; then
+            next_tag="v0.1.0"
+          else
+            range="${last_tag}..HEAD"
+            log=$(git log "$range" --pretty=format:%s%n%b)
+
+            bump="patch"
+            if echo "$log" | grep -qE 'BREAKING CHANGE|!:'; then
+              bump="major"
+            elif echo "$log" | grep -qE '^feat(\(.+\))?: '; then
+              bump="minor"
+            fi
+
+            version="${last_tag#v}"
+            IFS='.' read -r major minor patch <<< "$version"
+
+            case "$bump" in
+              major)
+                major=$((major + 1)); minor=0; patch=0;;
+              minor)
+                minor=$((minor + 1)); patch=0;;
+              patch)
+                patch=$((patch + 1));;
+            esac
+
+            next_tag="v${major}.${minor}.${patch}"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${next_tag}" >/dev/null; then
+            echo "Tag ${next_tag} already exists; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "tag=${next_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and Push Tag
+        if: ${{ steps.next_tag.outputs.skip != 'true' }}
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GITEA_TOKEN" ]; then
+            echo "GITEA_KEY secret is not set" >&2
+            exit 1
+          fi
+
+          tag="${{ steps.next_tag.outputs.tag }}"
+          git tag -a "$tag" -m "Release $tag"
+
+          git remote set-url origin "https://x-access-token:${GITEA_TOKEN}@git.bsdserver.nl/wbyc/terraform-provider-haproxy-dataplane.git"
+          git push origin "refs/tags/${tag}"
