@@ -2,10 +2,13 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/pderuiter/terraform-provider-haproxy-dataplane/internal/client"
 )
 
@@ -23,34 +26,6 @@ func getClient(data any) (*client.Client, diag.Diagnostics) {
 	return c, diags
 }
 
-func normalizeJSON(input string) (string, map[string]any, error) {
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(input), &obj); err != nil {
-		return "", nil, fmt.Errorf("invalid json: %w", err)
-	}
-	buf, err := json.Marshal(obj)
-	if err != nil {
-		return "", nil, err
-	}
-	return string(buf), obj, nil
-}
-
-func decodeJSONToMap(input string) (map[string]any, error) {
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(input), &obj); err != nil {
-		return nil, err
-	}
-	return obj, nil
-}
-
-func encodeJSON(input any) (string, error) {
-	buf, err := json.Marshal(input)
-	if err != nil {
-		return "", err
-	}
-	return string(buf), nil
-}
-
 func getConfigVersion(ctx context.Context, c *client.Client) (int64, error) {
 	var out int64
 	if err := c.GetJSON(ctx, "/services/haproxy/configuration/version", nil, &out); err != nil {
@@ -61,4 +36,38 @@ func getConfigVersion(ctx context.Context, c *client.Client) (int64, error) {
 
 func int64ToString(v int64) string {
 	return fmt.Sprintf("%d", v)
+}
+
+func objectToMap(ctx context.Context, obj types.Object) (map[string]any, diag.Diagnostics) {
+	var out map[string]any
+	diags := obj.As(ctx, &out, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: false})
+	if out == nil {
+		out = map[string]any{}
+	}
+	return out, diags
+}
+
+func mapToObject(ctx context.Context, typesMap map[string]attr.Type, input map[string]any, dropKeys []string) (types.Object, diag.Diagnostics) {
+	filtered := map[string]any{}
+	for k, v := range input {
+		filtered[k] = v
+	}
+	for _, k := range dropKeys {
+		delete(filtered, k)
+	}
+	obj, diags := types.ObjectValueFrom(ctx, typesMap, filtered)
+	return obj, diags
+}
+
+func buildPath(path string, params map[string]string) string {
+	out := path
+	for k, v := range params {
+		out = strings.ReplaceAll(out, "{"+k+"}", v)
+	}
+	return out
+}
+
+func listObjectsFrom(ctx context.Context, typesMap map[string]attr.Type, input []map[string]any) (types.List, diag.Diagnostics) {
+	list, diags := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: typesMap}, input)
+	return list, diags
 }

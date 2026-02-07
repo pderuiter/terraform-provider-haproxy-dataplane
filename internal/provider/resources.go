@@ -7,10 +7,5 @@ import (
 )
 
 func (p *haproxyProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		NewBackendResource,
-		NewBindResource,
-		NewFrontendResource,
-		NewServerResource,
-	}
+	return generatedResources()
 }

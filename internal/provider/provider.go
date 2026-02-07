@@ -129,5 +129,5 @@ func (p *haproxyProvider) Configure(ctx context.Context, req provider.ConfigureR
 }
 
 func (p *haproxyProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return generatedDataSources()
 }

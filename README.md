@@ -8,7 +8,7 @@ This is an initial implementation focused on core configuration resources. The n
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.24+
 - Terraform 1.5+
 - Docker (for local testing)
 - HAProxy Data Plane API (v3 path by default)
@@ -36,39 +36,48 @@ terraform {
 provider "haproxy-dataplane" {
   endpoint = "http://localhost:5555"
   username = "admin"
-  password = "adminpwd"
+  password = var.haproxy_admin_password
   api_path = "/v3"
 }
 ```
+
+When using the provided docker setup, the admin password is generated at startup and stored in `dev/haproxy/haproxy.cfg` under the `userlist controller` section.
 
 3. Example resources:
 
 ```hcl
 resource "haproxy-dataplane_backend" "app" {
   name = "be_app"
-  config_json = jsonencode({
-    mode = "http"
+  spec = {
+    mode    = "http"
     balance = "roundrobin"
-  })
+  }
 }
 
 resource "haproxy-dataplane_frontend" "app" {
   name = "fe_app"
-  config_json = jsonencode({
-    mode = "http"
-    bind = "*:8080"
+  spec = {
+    mode            = "http"
     default_backend = "be_app"
-  })
+  }
+}
+
+resource "haproxy-dataplane_bind" "app" {
+  frontend = haproxy-dataplane_frontend.app.name
+  name     = "app"
+  spec = {
+    address = "*"
+    port    = 8080
+  }
 }
 
 resource "haproxy-dataplane_server" "s1" {
   backend = haproxy-dataplane_backend.app.name
   name    = "s1"
-  config_json = jsonencode({
+  spec = {
     address = "127.0.0.1"
     port    = 9000
-    check   = "enabled"
-  })
+  }
 }
 ```
 
@@ -88,7 +97,7 @@ go test ./...
 
 ## Notes
 
-- `config_json` should match the object shape expected by the Data Plane API endpoint.
+- `spec` matches the object shape expected by the Data Plane API endpoint.
 - The provider automatically fetches the configuration version before applying changes.
 
 ## Roadmap (Next Iterations)
