@@ -33,3 +33,7 @@ jobs:
           }
           EOF
           TF_CLI_CONFIG_FILE=/tmp/tf-dev.tfrc ./scripts/registry_integration.sh
+      - name: runtime-integration
+        run: |
+          set -euo pipefail
+          ./scripts/registry_runtime_integration.sh

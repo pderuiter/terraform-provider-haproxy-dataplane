@@ -372,6 +372,30 @@ func dynamicToObjectsWithSchema(ctx context.Context, dyn types.Dynamic, schemaNa
 	if list, ok := underlying.(types.List); ok {
 		return listToObjectsWithSchema(ctx, list, schemaName)
 	}
+	if tuple, ok := underlying.(basetypes.TupleValue); ok {
+		out := make([]map[string]any, 0, len(tuple.Elements()))
+		var diags diag.Diagnostics
+		for _, elem := range tuple.Elements() {
+			v, vDiags := attrValueToAny(ctx, elem)
+			diags.Append(vDiags...)
+			if v == nil {
+				continue
+			}
+			m, ok := v.(map[string]any)
+			if !ok {
+				diags.AddError("Invalid dynamic spec", "Expected tuple elements to be objects")
+				return []map[string]any{}, diags
+			}
+			out = append(out, m)
+		}
+		meta, ok := schemaMetaFor(schemaName)
+		if ok && meta != nil {
+			for i, item := range out {
+				out[i] = transformTFToAPIMap(item, meta)
+			}
+		}
+		return out, diags
+	}
 	return []map[string]any{}, diag.Diagnostics{diag.NewErrorDiagnostic("Invalid dynamic spec", "Expected a list value for dynamic spec")}
 }
 
