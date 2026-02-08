@@ -246,7 +246,7 @@ for r in resources:
             f.write("\tpayload, diags := objectToMapWithSchema(ctx, plan.Spec, \"%s\")\n" % r['schema'])
             f.write("\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
             for p in path_params:
-                if p in ['name', 'index']:
+                if p in ['name', 'index'] or (name == 'backend_server_template' and p == 'prefix'):
                     field = go_ident(tf_param_name(p))
                     f.write(f"\tpayload[\"{p}\"] = {value_string_expr('plan.'+field, p)}\n")
         create_path = r['collection_path'] if r['create_via'] == 'post' else r['path']
@@ -300,7 +300,7 @@ for r in resources:
                 f.write("\tpayload, diags := objectToMapWithSchema(ctx, plan.Spec, \"%s\")\n" % r['schema'])
                 f.write("\tresp.Diagnostics.Append(diags...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
                 for p in path_params:
-                    if p in ['name', 'index']:
+                    if p in ['name', 'index'] or (name == 'backend_server_template' and p == 'prefix'):
                         field = go_ident(tf_param_name(p))
                         f.write(f"\tpayload[\"{p}\"] = {value_string_expr('plan.'+field, p)}\n")
             f.write("\tpath := buildPath(\"%s\", map[string]string{\n" % r['path'])

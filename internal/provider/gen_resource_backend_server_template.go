@@ -77,6 +77,7 @@ func (r *backend_server_templateResource) Create(ctx context.Context, req resour
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	payload["prefix"] = plan.Prefix.ValueString()
 	path := buildPath("/services/haproxy/configuration/backends/{parent_name}/server_templates", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 		"prefix":      plan.Prefix.ValueString(),
@@ -128,6 +129,7 @@ func (r *backend_server_templateResource) Update(ctx context.Context, req resour
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	payload["prefix"] = plan.Prefix.ValueString()
 	path := buildPath("/services/haproxy/configuration/backends/{parent_name}/server_templates/{prefix}", map[string]string{
 		"parent_name": plan.ParentName.ValueString(),
 		"prefix":      plan.Prefix.ValueString(),
