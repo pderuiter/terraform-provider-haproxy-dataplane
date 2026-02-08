@@ -153,6 +153,7 @@ if [ -f "$HAPROXY_CONFIG_DIR/dataplaneapi.yml" ]; then
 fi
 
 echo "Starting integration containers..."
+compose down --remove-orphans >/dev/null 2>&1 || true
 compose up -d
 configure_haproxy_container
 detect_network_name

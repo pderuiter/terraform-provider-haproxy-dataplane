@@ -3,7 +3,7 @@ terraform {
   required_providers {
     haproxy-dataplane = {
       source  = "pderuiter/haproxy-dataplane"
-      version = "0.1.0"
+      version = "= 0.1.7"
     }
   }
 }
@@ -13,8 +13,13 @@ variable "haproxy_admin_password" {
   sensitive = true
 }
 
+variable "dataplane_endpoint" {
+  type    = string
+  default = "http://localhost:5555"
+}
+
 provider "haproxy-dataplane" {
-  endpoint = "http://localhost:5555"
+  endpoint = var.dataplane_endpoint
   username = "admin"
   password = var.haproxy_admin_password
   api_path = "/v3"
