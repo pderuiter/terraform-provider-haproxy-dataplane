@@ -23,7 +23,7 @@ provider "haproxy-dataplane" {
 resource "haproxy-dataplane_backend" "smoke" {
   name = "be_smoke"
   spec = {
-    mode    = "http"
+    mode = "http"
     balance = {
       algorithm = "roundrobin"
     }
