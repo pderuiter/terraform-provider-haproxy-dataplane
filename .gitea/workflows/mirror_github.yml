@@ -26,10 +26,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
         run: |
+          set -euo pipefail
           if [ -z "$GITHUB_TOKEN" ]; then
             echo "GITHUB_TOKEN secret is not set" >&2
             exit 1
           fi
           git remote add github https://x-access-token:${GITHUB_TOKEN}@github.com/pderuiter/terraform-provider-haproxy-dataplane.git
-          git push --prune github "refs/heads/*:refs/heads/*"
-          git push --prune github "refs/tags/*:refs/tags/*"
+
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            if git ls-remote --exit-code --tags github "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "Tag ${tag} already exists on GitHub, skipping tag push."
+            else
+              git push github "refs/tags/${tag}:refs/tags/${tag}"
+            fi
+          else
+            git push --prune github "refs/heads/*:refs/heads/*"
+          fi
