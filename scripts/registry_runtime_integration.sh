@@ -26,6 +26,29 @@ compose() {
   docker compose -f "$COMPOSE_FILE" "$@"
 }
 
+NETWORK_NAME=""
+
+detect_network_name() {
+  local haproxy_id
+  haproxy_id="$(compose ps -q haproxy)"
+  if [ -z "$haproxy_id" ]; then
+    echo "Failed to find haproxy container ID from docker compose while detecting network" >&2
+    dump_compose_logs
+    return 1
+  fi
+
+  NETWORK_NAME="$(docker inspect -f '{{range $name, $cfg := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$haproxy_id" | head -n 1 | tr -d '[:space:]')"
+  if [ -z "$NETWORK_NAME" ]; then
+    echo "Failed to detect docker network for haproxy container" >&2
+    dump_compose_logs
+    return 1
+  fi
+}
+
+curl_via_network() {
+  docker run --rm --network "$NETWORK_NAME" curlimages/curl:8.10.1 "$@"
+}
+
 dump_compose_logs() {
   echo "---- docker compose ps ----" >&2
   compose ps >&2 || true
@@ -57,9 +80,9 @@ wait_http() {
   local tries=0
   until {
     if [ -n "$userpass" ]; then
-      curl -fsS -u "$userpass" "$url" >/dev/null 2>&1
+      curl_via_network -fsS -u "$userpass" "$url" >/dev/null 2>&1
     else
-      curl -fsS "$url" >/dev/null 2>&1
+      curl_via_network -fsS "$url" >/dev/null 2>&1
     fi
   }; do
     tries=$((tries + 1))
@@ -92,6 +115,7 @@ fi
 echo "Starting integration containers for runtime scenario..."
 compose up -d
 configure_haproxy_container
+detect_network_name
 
 cleanup() {
   set +e
@@ -123,8 +147,8 @@ fi
 export TF_VAR_haproxy_admin_password="$HAPROXY_ADMIN_PASSWORD"
 export TF_VAR_name_suffix="rtime$(date +%s)"
 
-wait_http "http://127.0.0.1:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
-wait_http "http://127.0.0.1:8500/v1/status/leader" "Consul"
+wait_http "http://haproxy:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
+wait_http "http://consul:8500/v1/status/leader" "Consul"
 
 ECHO_CONTAINER_ID="$(compose ps -q echo)"
 if [ -z "$ECHO_CONTAINER_ID" ]; then
@@ -138,7 +162,7 @@ if [ -z "$ECHO_IP" ]; then
   dump_compose_logs
   exit 1
 fi
-curl -fsS -X PUT http://127.0.0.1:8500/v1/agent/service/register \
+curl_via_network -fsS -X PUT http://consul:8500/v1/agent/service/register \
   -H 'Content-Type: application/json' \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
@@ -166,8 +190,8 @@ terraform apply -auto-approve -parallelism=1
 RUNTIME_BACKEND="be_http"
 RUNTIME_SERVER="runtime-${TF_VAR_name_suffix}"
 
-curl -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
-  "http://127.0.0.1:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" \
+curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
+  "http://haproxy:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" \
   | grep -q "${RUNTIME_SERVER}" || {
     echo "Runtime backend server not found" >&2
     exit 1
