@@ -121,9 +121,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PASSWORD_LINE=$(awk '/user admin insecure-password/ {print $0; exit}' "$HAPROXY_CONFIG_DIR/haproxy.cfg")
+HAPROXY_CONTAINER_ID="$(compose ps -q haproxy)"
+if [ -z "$HAPROXY_CONTAINER_ID" ]; then
+  echo "Failed to find haproxy container ID from docker compose" >&2
+  dump_compose_logs
+  exit 1
+fi
+
+PASSWORD_LINE="$(docker exec "$HAPROXY_CONTAINER_ID" awk '/user admin insecure-password/ {print $0; exit}' /usr/local/etc/haproxy/haproxy.cfg || true)"
 if [ -z "$PASSWORD_LINE" ]; then
-  echo "Failed to read admin password from dev/haproxy/haproxy.cfg" >&2
+  echo "Failed to read admin password from container haproxy.cfg" >&2
+  dump_compose_logs
   exit 1
 fi
 HAPROXY_ADMIN_PASSWORD=$(echo "$PASSWORD_LINE" | awk '{print $4}')
@@ -134,8 +142,8 @@ fi
 export TF_VAR_haproxy_admin_password="$HAPROXY_ADMIN_PASSWORD"
 export TF_VAR_name_suffix="itest$(date +%s)"
 
-wait_http "http://localhost:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
-wait_http "http://localhost:8500/v1/status/leader" "Consul"
+wait_http "http://127.0.0.1:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
+wait_http "http://127.0.0.1:8500/v1/status/leader" "Consul"
 
 echo "Registering test service in Consul..."
 ECHO_CONTAINER_ID="$(compose ps -q echo)"
@@ -150,7 +158,7 @@ if [ -z "$ECHO_IP" ]; then
   dump_compose_logs
   exit 1
 fi
-curl -fsS -X PUT http://localhost:8500/v1/agent/service/register \
+curl -fsS -X PUT http://127.0.0.1:8500/v1/agent/service/register \
   -H 'Content-Type: application/json' \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
@@ -164,14 +172,14 @@ echo "Applying integration module..."
 terraform apply -auto-approve -parallelism=1
 
 # Main static backend/frontend path test
-wait_body_contains "http://localhost:18081" "Main frontend" "hello-from-consul"
+wait_body_contains "http://127.0.0.1:18081" "Main frontend" "hello-from-consul"
 
 # Service discovery path test (backend server + consul resolver)
-wait_body_contains "http://localhost:18082" "Service discovery frontend" "hello-from-consul"
+wait_body_contains "http://127.0.0.1:18082" "Service discovery frontend" "hello-from-consul"
 
 # ACME config existence check
 curl -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
-  "http://localhost:5555/v3/services/haproxy/configuration/acme/letsencrypt_${TF_VAR_name_suffix}" \
+  "http://127.0.0.1:5555/v3/services/haproxy/configuration/acme/letsencrypt_${TF_VAR_name_suffix}" \
   | grep -q '"directory"' || {
     echo "ACME configuration not found through Data Plane API" >&2
     exit 1

@@ -102,9 +102,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PASSWORD_LINE=$(awk '/user admin insecure-password/ {print $0; exit}' "$HAPROXY_CONFIG_DIR/haproxy.cfg")
+HAPROXY_CONTAINER_ID="$(compose ps -q haproxy)"
+if [ -z "$HAPROXY_CONTAINER_ID" ]; then
+  echo "Failed to find haproxy container ID from docker compose" >&2
+  dump_compose_logs
+  exit 1
+fi
+
+PASSWORD_LINE="$(docker exec "$HAPROXY_CONTAINER_ID" awk '/user admin insecure-password/ {print $0; exit}' /usr/local/etc/haproxy/haproxy.cfg || true)"
 if [ -z "$PASSWORD_LINE" ]; then
-  echo "Failed to read admin password from dev/haproxy/haproxy.cfg" >&2
+  echo "Failed to read admin password from container haproxy.cfg" >&2
+  dump_compose_logs
   exit 1
 fi
 HAPROXY_ADMIN_PASSWORD=$(echo "$PASSWORD_LINE" | awk '{print $4}')
@@ -115,8 +123,8 @@ fi
 export TF_VAR_haproxy_admin_password="$HAPROXY_ADMIN_PASSWORD"
 export TF_VAR_name_suffix="rtime$(date +%s)"
 
-wait_http "http://localhost:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
-wait_http "http://localhost:8500/v1/status/leader" "Consul"
+wait_http "http://127.0.0.1:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
+wait_http "http://127.0.0.1:8500/v1/status/leader" "Consul"
 
 ECHO_CONTAINER_ID="$(compose ps -q echo)"
 if [ -z "$ECHO_CONTAINER_ID" ]; then
@@ -130,7 +138,7 @@ if [ -z "$ECHO_IP" ]; then
   dump_compose_logs
   exit 1
 fi
-curl -fsS -X PUT http://localhost:8500/v1/agent/service/register \
+curl -fsS -X PUT http://127.0.0.1:8500/v1/agent/service/register \
   -H 'Content-Type: application/json' \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
@@ -159,7 +167,7 @@ RUNTIME_BACKEND="be_http"
 RUNTIME_SERVER="runtime-${TF_VAR_name_suffix}"
 
 curl -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
-  "http://localhost:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" \
+  "http://127.0.0.1:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" \
   | grep -q "${RUNTIME_SERVER}" || {
     echo "Runtime backend server not found" >&2
     exit 1
