@@ -7,11 +7,6 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.integration.yml"
 WORK_DIR="$(mktemp -d)"
 HAPROXY_CONFIG_DIR="$WORK_DIR/haproxy-config"
 
-if ! command -v terraform >/dev/null 2>&1; then
-  echo "terraform is required on PATH" >&2
-  exit 1
-fi
-
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker is required on PATH" >&2
   exit 1
@@ -47,6 +42,30 @@ detect_network_name() {
 
 curl_via_network() {
   docker run --rm --network "$NETWORK_NAME" curlimages/curl:8.10.1 "$@"
+}
+
+terraform_cmd() {
+  local args=(
+    docker run --rm
+    --network "$NETWORK_NAME"
+    -v "$EXAMPLE_DIR:/workspace"
+    -w /workspace
+    -e TF_VAR_haproxy_admin_password
+    -e TF_VAR_name_suffix
+    -e TF_VAR_dataplane_endpoint
+  )
+
+  if [ -n "${TF_CLI_CONFIG_FILE:-}" ] && [ -f "${TF_CLI_CONFIG_FILE}" ]; then
+    args+=(-e TF_CLI_CONFIG_FILE)
+    args+=(-v "${TF_CLI_CONFIG_FILE}:${TF_CLI_CONFIG_FILE}:ro")
+  fi
+
+  if [ -d /tmp/tf-dev-provider-runtime ]; then
+    args+=(-v /tmp/tf-dev-provider-runtime:/tmp/tf-dev-provider-runtime:ro)
+  fi
+
+  args+=(hashicorp/terraform:1.11.0 "$@")
+  "${args[@]}"
 }
 
 dump_compose_logs() {
@@ -120,7 +139,7 @@ detect_network_name
 cleanup() {
   set +e
   echo "Cleaning up runtime terraform state and containers..."
-  (cd "$EXAMPLE_DIR" && terraform destroy -auto-approve -parallelism=1 >/dev/null 2>&1)
+  terraform_cmd destroy -auto-approve -parallelism=1 >/dev/null 2>&1
   compose down >/dev/null 2>&1
   rm -rf "$WORK_DIR"
 }
@@ -146,6 +165,7 @@ if [ -z "$HAPROXY_ADMIN_PASSWORD" ]; then
 fi
 export TF_VAR_haproxy_admin_password="$HAPROXY_ADMIN_PASSWORD"
 export TF_VAR_name_suffix="rtime$(date +%s)"
+export TF_VAR_dataplane_endpoint="http://haproxy:5555"
 
 wait_http "http://haproxy:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
 wait_http "http://consul:8500/v1/status/leader" "Consul"
@@ -167,7 +187,7 @@ curl_via_network -fsS -X PUT http://consul:8500/v1/agent/service/register \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
 mkdir -p /tmp/tf-dev-provider-runtime
-go build -o /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane "$ROOT_DIR"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane "$ROOT_DIR"
 cat > /tmp/tf-dev-runtime.tfrc <<'EOF'
 provider_installation {
   dev_overrides {
@@ -182,10 +202,10 @@ pushd "$EXAMPLE_DIR" >/dev/null
 rm -rf .terraform .terraform.lock.hcl terraform.tfstate*
 
 echo "Initializing terraform for runtime scenario..."
-terraform init
+terraform_cmd init
 
 echo "Applying runtime integration module..."
-terraform apply -auto-approve -parallelism=1
+terraform_cmd apply -auto-approve -parallelism=1
 
 RUNTIME_BACKEND="be_http"
 RUNTIME_SERVER="runtime-${TF_VAR_name_suffix}"
@@ -199,7 +219,7 @@ curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
 
 echo "Runtime integration test passed: runtime backend_server checks succeeded."
 
-terraform destroy -auto-approve -parallelism=1
+terraform_cmd destroy -auto-approve -parallelism=1
 popd >/dev/null
 
 echo "Runtime integration test complete."

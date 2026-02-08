@@ -7,11 +7,6 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.integration.yml"
 WORK_DIR="$(mktemp -d)"
 HAPROXY_CONFIG_DIR="$WORK_DIR/haproxy-config"
 
-if ! command -v terraform >/dev/null 2>&1; then
-  echo "terraform is required on PATH" >&2
-  exit 1
-fi
-
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker is required on PATH" >&2
   exit 1
@@ -42,6 +37,17 @@ detect_network_name() {
 
 curl_via_network() {
   docker run --rm --network "$NETWORK_NAME" curlimages/curl:8.10.1 "$@"
+}
+
+terraform_cmd() {
+  docker run --rm \
+    --network "$NETWORK_NAME" \
+    -v "$EXAMPLE_DIR:/workspace" \
+    -w /workspace \
+    -e TF_VAR_haproxy_admin_password \
+    -e TF_VAR_name_suffix \
+    -e TF_VAR_dataplane_endpoint \
+    hashicorp/terraform:1.11.0 "$@"
 }
 
 dump_compose_logs() {
@@ -139,7 +145,7 @@ detect_network_name
 cleanup() {
   set +e
   echo "Cleaning up terraform state and containers..."
-  (cd "$EXAMPLE_DIR" && terraform destroy -auto-approve -parallelism=1 >/dev/null 2>&1)
+  terraform_cmd destroy -auto-approve -parallelism=1 >/dev/null 2>&1
   compose down >/dev/null 2>&1
   rm -rf "$WORK_DIR"
 }
@@ -165,6 +171,7 @@ if [ -z "$HAPROXY_ADMIN_PASSWORD" ]; then
 fi
 export TF_VAR_haproxy_admin_password="$HAPROXY_ADMIN_PASSWORD"
 export TF_VAR_name_suffix="itest$(date +%s)"
+export TF_VAR_dataplane_endpoint="http://haproxy:5555"
 
 wait_http "http://haproxy:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPROXY_ADMIN_PASSWORD}"
 wait_http "http://consul:8500/v1/status/leader" "Consul"
@@ -190,10 +197,10 @@ pushd "$EXAMPLE_DIR" >/dev/null
 rm -rf .terraform .terraform.lock.hcl terraform.tfstate* 
 
 echo "Initializing terraform..."
-terraform init
+terraform_cmd init
 
 echo "Applying integration module..."
-terraform apply -auto-approve -parallelism=1
+terraform_cmd apply -auto-approve -parallelism=1
 
 # Main static backend/frontend path test
 wait_body_contains "http://haproxy:18081" "Main frontend" "hello-from-consul"
@@ -210,29 +217,29 @@ curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
   }
 
 # Additional typed resource CRUD checks (state IDs after create)
-terraform state show haproxy-dataplane_userlist.itest | grep -q "id   = \"itest_userlist_${TF_VAR_name_suffix}\"" || {
+terraform_cmd state show haproxy-dataplane_userlist.itest | grep -q "id   = \"itest_userlist_${TF_VAR_name_suffix}\"" || {
   echo "Userlist state check failed" >&2
   exit 1
 }
 
-terraform state show haproxy-dataplane_group.ops | grep -q "name     = \"ops_${TF_VAR_name_suffix}\"" || {
+terraform_cmd state show haproxy-dataplane_group.ops | grep -q "name     = \"ops_${TF_VAR_name_suffix}\"" || {
   echo "Group state check failed" >&2
   exit 1
 }
 
-terraform state show haproxy-dataplane_cache.itest | grep -q "id   = \"cache_${TF_VAR_name_suffix}\"" || {
+terraform_cmd state show haproxy-dataplane_cache.itest | grep -q "id   = \"cache_${TF_VAR_name_suffix}\"" || {
   echo "Cache state check failed" >&2
   exit 1
 }
 
-terraform state show haproxy-dataplane_log_profile.itest | grep -q "id   = \"log_profile_${TF_VAR_name_suffix}\"" || {
+terraform_cmd state show haproxy-dataplane_log_profile.itest | grep -q "id   = \"log_profile_${TF_VAR_name_suffix}\"" || {
   echo "Log profile state check failed" >&2
   exit 1
 }
 
 echo "Integration test passed: traffic, service discovery, acme, and additional typed resource CRUD checks succeeded."
 
-terraform destroy -auto-approve -parallelism=1
+terraform_cmd destroy -auto-approve -parallelism=1
 popd >/dev/null
 
 echo "Integration test complete."

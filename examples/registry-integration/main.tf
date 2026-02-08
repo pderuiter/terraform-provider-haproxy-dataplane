@@ -18,8 +18,13 @@ variable "name_suffix" {
   type = string
 }
 
+variable "dataplane_endpoint" {
+  type    = string
+  default = "http://localhost:5555"
+}
+
 provider "haproxy-dataplane" {
-  endpoint = "http://localhost:5555"
+  endpoint = var.dataplane_endpoint
   username = "admin"
   password = var.haproxy_admin_password
   api_path = "/v3"
