@@ -22,6 +22,7 @@ compose() {
 }
 
 NETWORK_NAME=""
+TF_CONTAINER_NAME=""
 
 detect_network_name() {
   local haproxy_id
@@ -46,26 +47,34 @@ curl_via_network() {
 
 terraform_cmd() {
   local args=(
-    docker run --rm
-    --network "$NETWORK_NAME"
-    -v "$EXAMPLE_DIR:/workspace"
-    -w /workspace
+    docker exec
     -e TF_VAR_haproxy_admin_password
     -e TF_VAR_name_suffix
     -e TF_VAR_dataplane_endpoint
   )
-
-  if [ -n "${TF_CLI_CONFIG_FILE:-}" ] && [ -f "${TF_CLI_CONFIG_FILE}" ]; then
+  if [ -n "${TF_CLI_CONFIG_FILE:-}" ]; then
     args+=(-e TF_CLI_CONFIG_FILE)
-    args+=(-v "${TF_CLI_CONFIG_FILE}:${TF_CLI_CONFIG_FILE}:ro")
   fi
-
-  if [ -d /tmp/tf-dev-provider-runtime ]; then
-    args+=(-v /tmp/tf-dev-provider-runtime:/tmp/tf-dev-provider-runtime:ro)
-  fi
-
-  args+=(hashicorp/terraform:1.11.0 "$@")
+  args+=("$TF_CONTAINER_NAME" terraform -chdir=/workspace)
+  args+=("$@")
   "${args[@]}"
+}
+
+start_terraform_container() {
+  TF_CONTAINER_NAME="tf-runtime-$(date +%s)-$$"
+  docker run -d --rm \
+    --network "$NETWORK_NAME" \
+    --name "$TF_CONTAINER_NAME" \
+    --entrypoint sh \
+    hashicorp/terraform:1.11.0 -c 'sleep infinity' >/dev/null
+  docker exec "$TF_CONTAINER_NAME" mkdir -p /workspace >/dev/null
+  docker cp "$EXAMPLE_DIR/." "$TF_CONTAINER_NAME:/workspace/"
+}
+
+stop_terraform_container() {
+  if [ -n "$TF_CONTAINER_NAME" ]; then
+    docker rm -f "$TF_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
 }
 
 dump_compose_logs() {
@@ -135,11 +144,13 @@ echo "Starting integration containers for runtime scenario..."
 compose up -d
 configure_haproxy_container
 detect_network_name
+start_terraform_container
 
 cleanup() {
   set +e
   echo "Cleaning up runtime terraform state and containers..."
   terraform_cmd destroy -auto-approve -parallelism=1 >/dev/null 2>&1
+  stop_terraform_container
   compose down >/dev/null 2>&1
   rm -rf "$WORK_DIR"
 }
@@ -197,6 +208,11 @@ provider_installation {
 }
 EOF
 export TF_CLI_CONFIG_FILE=/tmp/tf-dev-runtime.tfrc
+docker exec "$TF_CONTAINER_NAME" mkdir -p /tmp/tf-dev-provider-runtime >/dev/null
+docker cp /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane \
+  "$TF_CONTAINER_NAME:/tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane"
+docker cp /tmp/tf-dev-runtime.tfrc "$TF_CONTAINER_NAME:/tmp/tf-dev-runtime.tfrc"
+docker exec "$TF_CONTAINER_NAME" chmod +x /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane
 
 pushd "$EXAMPLE_DIR" >/dev/null
 rm -rf .terraform .terraform.lock.hcl terraform.tfstate*

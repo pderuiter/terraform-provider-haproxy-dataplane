@@ -17,6 +17,7 @@ compose() {
 }
 
 NETWORK_NAME=""
+TF_CONTAINER_NAME=""
 
 detect_network_name() {
   local haproxy_id
@@ -40,14 +41,28 @@ curl_via_network() {
 }
 
 terraform_cmd() {
-  docker run --rm \
-    --network "$NETWORK_NAME" \
-    -v "$EXAMPLE_DIR:/workspace" \
-    -w /workspace \
+  docker exec \
     -e TF_VAR_haproxy_admin_password \
     -e TF_VAR_name_suffix \
     -e TF_VAR_dataplane_endpoint \
-    hashicorp/terraform:1.11.0 "$@"
+    "$TF_CONTAINER_NAME" terraform -chdir=/workspace "$@"
+}
+
+start_terraform_container() {
+  TF_CONTAINER_NAME="tf-integration-$(date +%s)-$$"
+  docker run -d --rm \
+    --network "$NETWORK_NAME" \
+    --name "$TF_CONTAINER_NAME" \
+    --entrypoint sh \
+    hashicorp/terraform:1.11.0 -c 'sleep infinity' >/dev/null
+  docker exec "$TF_CONTAINER_NAME" mkdir -p /workspace >/dev/null
+  docker cp "$EXAMPLE_DIR/." "$TF_CONTAINER_NAME:/workspace/"
+}
+
+stop_terraform_container() {
+  if [ -n "$TF_CONTAINER_NAME" ]; then
+    docker rm -f "$TF_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
 }
 
 dump_compose_logs() {
@@ -141,11 +156,13 @@ echo "Starting integration containers..."
 compose up -d
 configure_haproxy_container
 detect_network_name
+start_terraform_container
 
 cleanup() {
   set +e
   echo "Cleaning up terraform state and containers..."
   terraform_cmd destroy -auto-approve -parallelism=1 >/dev/null 2>&1
+  stop_terraform_container
   compose down >/dev/null 2>&1
   rm -rf "$WORK_DIR"
 }
