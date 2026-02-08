@@ -17,6 +17,19 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+compose() {
+  HAPROXY_CONFIG_DIR="$HAPROXY_CONFIG_DIR" docker compose -f "$COMPOSE_FILE" "$@"
+}
+
+dump_compose_logs() {
+  echo "---- docker compose ps ----" >&2
+  compose ps >&2 || true
+  echo "---- haproxy logs ----" >&2
+  compose logs --tail=200 haproxy >&2 || true
+  echo "---- consul logs ----" >&2
+  compose logs --tail=200 consul >&2 || true
+}
+
 wait_http() {
   local url="$1"
   local name="$2"
@@ -30,8 +43,9 @@ wait_http() {
     fi
   }; do
     tries=$((tries + 1))
-    if [ "$tries" -ge 60 ]; then
+    if [ "$tries" -ge 120 ]; then
       echo "Timed out waiting for $name ($url)" >&2
+      dump_compose_logs
       return 1
     fi
     sleep 2
@@ -50,8 +64,9 @@ wait_body_contains() {
       return 0
     fi
     tries=$((tries + 1))
-    if [ "$tries" -ge 60 ]; then
+    if [ "$tries" -ge 120 ]; then
       echo "Timed out waiting for expected body on $name ($url). Last body: $body" >&2
+      dump_compose_logs
       return 1
     fi
     sleep 2
@@ -79,13 +94,13 @@ if [ -f "$HAPROXY_CONFIG_DIR/dataplaneapi.yml" ]; then
 fi
 
 echo "Starting integration containers..."
-HAPROXY_CONFIG_DIR="$HAPROXY_CONFIG_DIR" docker compose -f "$COMPOSE_FILE" up -d
+compose up -d
 
 cleanup() {
   set +e
   echo "Cleaning up terraform state and containers..."
   (cd "$EXAMPLE_DIR" && terraform destroy -auto-approve -parallelism=1 >/dev/null 2>&1)
-  HAPROXY_CONFIG_DIR="$HAPROXY_CONFIG_DIR" docker compose -f "$COMPOSE_FILE" down >/dev/null 2>&1
+  compose down >/dev/null 2>&1
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -107,9 +122,16 @@ wait_http "http://localhost:5555/v3/info" "HAProxy Data Plane API" "admin:${HAPR
 wait_http "http://localhost:8500/v1/status/leader" "Consul"
 
 echo "Registering test service in Consul..."
-ECHO_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' haproxyprovider-echo-1)
+ECHO_CONTAINER_ID="$(compose ps -q echo)"
+if [ -z "$ECHO_CONTAINER_ID" ]; then
+  echo "Failed to find echo container ID from docker compose" >&2
+  dump_compose_logs
+  exit 1
+fi
+ECHO_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ECHO_CONTAINER_ID")
 if [ -z "$ECHO_IP" ]; then
   echo "Failed to determine echo container IP for Consul registration" >&2
+  dump_compose_logs
   exit 1
 fi
 curl -fsS -X PUT http://localhost:8500/v1/agent/service/register \
