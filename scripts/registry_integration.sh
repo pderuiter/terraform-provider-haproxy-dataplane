@@ -18,7 +18,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 compose() {
-  HAPROXY_CONFIG_DIR="$HAPROXY_CONFIG_DIR" docker compose -f "$COMPOSE_FILE" "$@"
+  docker compose -f "$COMPOSE_FILE" "$@"
 }
 
 dump_compose_logs() {
@@ -28,6 +28,21 @@ dump_compose_logs() {
   compose logs --tail=200 haproxy >&2 || true
   echo "---- consul logs ----" >&2
   compose logs --tail=200 consul >&2 || true
+}
+
+configure_haproxy_container() {
+  local haproxy_id
+  haproxy_id="$(compose ps -q haproxy)"
+  if [ -z "$haproxy_id" ]; then
+    echo "Failed to find haproxy container ID from docker compose" >&2
+    dump_compose_logs
+    return 1
+  fi
+
+  docker exec "$haproxy_id" sh -lc \
+    "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
+  docker cp "$HAPROXY_CONFIG_DIR/." "$haproxy_id:/usr/local/etc/haproxy/"
+  docker restart "$haproxy_id" >/dev/null
 }
 
 wait_http() {
@@ -95,6 +110,7 @@ fi
 
 echo "Starting integration containers..."
 compose up -d
+configure_haproxy_container
 
 cleanup() {
   set +e

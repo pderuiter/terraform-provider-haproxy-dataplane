@@ -5,8 +5,6 @@ services:
       - "5555:5555"
       - "18081:18081"
       - "18082:18082"
-    volumes:
-      - ${HAPROXY_CONFIG_DIR:-./dev/haproxy}:/usr/local/etc/haproxy
     depends_on:
       - consul
       - echo
