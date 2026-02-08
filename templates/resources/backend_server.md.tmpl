@@ -13,6 +13,8 @@ Use this resource to attach application servers to a backend.
 
 ### Add a healthy backend target
 
+Use this as the standard pattern for each application node in a backend pool.
+
 ```terraform
 resource "haproxy-dataplane_backend" "api" {
   name = "be_api"
@@ -40,6 +42,8 @@ resource "haproxy-dataplane_backend_server" "api_1" {
 
 ### Backup node configuration
 
+Use this when a server should only receive traffic if primary servers are unavailable.
+
 ```terraform
 resource "haproxy-dataplane_backend_server" "api_backup" {
   parent_name = haproxy-dataplane_backend.api.name
@@ -53,6 +57,8 @@ resource "haproxy-dataplane_backend_server" "api_backup" {
   }
 }
 ```
+
+Set `backup = "enabled"` only on designated failover nodes to avoid unintended traffic shifts.
 
 ## Notes
 

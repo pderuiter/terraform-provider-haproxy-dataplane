@@ -13,6 +13,8 @@ Use this resource to define request entry points and routing behavior.
 
 ### HTTP frontend routing to a backend
 
+Use this as the default edge routing pattern for internal APIs and web apps.
+
 ```terraform
 resource "haproxy-dataplane_backend" "api" {
   name = "be_api"
@@ -37,6 +39,8 @@ resource "haproxy-dataplane_frontend" "public" {
 
 ### Frontend with request logging enabled
 
+Enable this when you need better request visibility for troubleshooting and traffic analysis.
+
 ```terraform
 resource "haproxy-dataplane_frontend" "public" {
   name = "fe_public"
@@ -48,6 +52,8 @@ resource "haproxy-dataplane_frontend" "public" {
   }
 }
 ```
+
+`httplog` is useful in non-trivial environments where access logs feed centralized observability.
 
 ## Notes
 

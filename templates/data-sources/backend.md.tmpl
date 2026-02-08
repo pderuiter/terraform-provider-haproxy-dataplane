@@ -11,6 +11,8 @@ Use this data source to read backend configuration that already exists.
 
 ## Example Usage
 
+Use this to reference existing HAProxy objects that are managed outside Terraform or in a separate workspace.
+
 ```terraform
 data "haproxy-dataplane_backend" "api" {
   name = "be_api"
@@ -20,5 +22,7 @@ output "backend_mode" {
   value = data.haproxy-dataplane_backend.api.spec["mode"]
 }
 ```
+
+This is commonly used to wire outputs and policy checks without taking ownership of the backend resource.
 
 {{ .SchemaMarkdown | trimspace }}

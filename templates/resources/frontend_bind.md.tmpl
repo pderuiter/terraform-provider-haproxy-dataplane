@@ -13,6 +13,8 @@ Use this resource to define frontend listener sockets.
 
 ### Bind frontend on HTTP port 80
 
+Use this for plain HTTP listeners, typically behind an internal network or an upstream TLS terminator.
+
 ```terraform
 resource "haproxy-dataplane_frontend" "public" {
   name = "fe_public"
@@ -35,6 +37,8 @@ resource "haproxy-dataplane_frontend_bind" "http" {
 
 ### TLS listener on 443
 
+Use this when HAProxy terminates TLS directly.
+
 ```terraform
 resource "haproxy-dataplane_frontend_bind" "https" {
   parent_name = haproxy-dataplane_frontend.public.name
@@ -48,6 +52,8 @@ resource "haproxy-dataplane_frontend_bind" "https" {
   }
 }
 ```
+
+Point `crt_list` to a valid certificate list file available on the HAProxy host.
 
 ## Notes
 

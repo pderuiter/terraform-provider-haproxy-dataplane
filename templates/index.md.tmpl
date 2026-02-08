@@ -10,6 +10,9 @@ Use this provider to manage HAProxy configuration with Terraform and keep load b
 
 ## Quick Start
 
+This example creates a complete HTTP flow: backend, backend server, frontend, and bind.
+Use it as the baseline for new deployments and then adjust names, ports, and server addresses.
+
 ```terraform
 terraform {
   required_providers {
@@ -72,6 +75,8 @@ resource "haproxy-dataplane_frontend_bind" "http" {
 
 ### Token-based authentication
 
+Use this when your Data Plane API is fronted by a token-issuing auth flow or reverse proxy.
+
 ```terraform
 provider "haproxy-dataplane" {
   endpoint = "https://haproxy.internal:5555"
@@ -80,6 +85,8 @@ provider "haproxy-dataplane" {
 ```
 
 ### mTLS authentication
+
+Use this when Data Plane API requires client certificate authentication.
 
 ```terraform
 provider "haproxy-dataplane" {

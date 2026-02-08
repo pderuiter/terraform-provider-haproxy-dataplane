@@ -13,6 +13,8 @@ Use this resource to create a backend and define balancing behavior.
 
 ### API backend with round-robin balancing
 
+Use this for stateless services where you want even request distribution across servers.
+
 ```terraform
 resource "haproxy-dataplane_backend" "api" {
   name = "be_api"
@@ -27,6 +29,8 @@ resource "haproxy-dataplane_backend" "api" {
 ```
 
 ### Backend with health checks and retry tuning
+
+Use this for production APIs where connection behavior and retry handling must be explicit.
 
 ```terraform
 resource "haproxy-dataplane_backend" "payments" {
@@ -44,6 +48,8 @@ resource "haproxy-dataplane_backend" "payments" {
   }
 }
 ```
+
+`connect_timeout`, `server_timeout`, and `retries` are common first tuning knobs during incident response.
 
 ## Notes
 
