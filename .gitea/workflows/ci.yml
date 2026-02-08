@@ -23,9 +23,27 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Go Test
         run: |
           go test ./... -coverprofile=coverage.out
+
+      - name: Integration Test (HAProxy + Consul + Terraform)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tf-dev-provider
+          go build -o /tmp/tf-dev-provider/terraform-provider-haproxy-dataplane .
+          cat > /tmp/tf-dev.tfrc <<'EOF'
+          provider_installation {
+            dev_overrides {
+              "pderuiter/haproxy-dataplane" = "/tmp/tf-dev-provider"
+            }
+            direct {}
+          }
+          EOF
+          TF_CLI_CONFIG_FILE=/tmp/tf-dev.tfrc ./scripts/registry_integration.sh
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2

@@ -700,12 +700,26 @@ var schemaMetaRegistry = map[string]*schemaFieldMeta{
 
 func schemaAttributesFor(name string) (map[string]rschema.Attribute, bool) {
 	attrs, ok := schemaAttributesRegistry[name]
-	return attrs, ok
+	if !ok {
+		return nil, false
+	}
+	cloned := make(map[string]rschema.Attribute, len(attrs))
+	for k, v := range attrs {
+		cloned[k] = v
+	}
+	return cloned, true
 }
 
 func schemaAttributesForDataSource(name string) (map[string]dschema.Attribute, bool) {
 	attrs, ok := datasourceAttributesRegistry[name]
-	return attrs, ok
+	if !ok {
+		return nil, false
+	}
+	cloned := make(map[string]dschema.Attribute, len(attrs))
+	for k, v := range attrs {
+		cloned[k] = v
+	}
+	return cloned, true
 }
 
 func schemaMetaFor(name string) (*schemaFieldMeta, bool) {
@@ -715,7 +729,11 @@ func schemaMetaFor(name string) (*schemaFieldMeta, bool) {
 
 func mustSchemaAttrTypes(name string) map[string]attr.Type {
 	if typesMap, ok := schemaAttrTypesRegistry[name]; ok {
-		return typesMap
+		cloned := make(map[string]attr.Type, len(typesMap))
+		for k, v := range typesMap {
+			cloned[k] = v
+		}
+		return cloned
 	}
 	return map[string]attr.Type{}
 }
