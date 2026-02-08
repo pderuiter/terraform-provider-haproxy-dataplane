@@ -11,8 +11,9 @@ Use this resource to manage the default_http_request_rule object in HAProxy Data
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_default_http_request_rule" "example" {
@@ -20,6 +21,32 @@ resource "haproxy-dataplane_default_http_request_rule" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  default_http_request_rule_name = "managed_default_http_request_rule"
+}
+
+variable "parent_name" {
+  description = "Parent object name, for example a frontend or backend name."
+  type        = string
+}
+
+resource "haproxy-dataplane_default_http_request_rule" "managed" {
+  parent_name = var.parent_name
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "default_http_request_rule_id" {
+  value = haproxy-dataplane_default_http_request_rule.managed.id
 }
 ```
 

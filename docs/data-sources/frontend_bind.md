@@ -11,10 +11,29 @@ Use this data source to read existing frontend_bind configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_frontend_bind" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  frontend_bind_lookup_name = "existing_frontend_bind"
+}
+
+data "haproxy-dataplane_frontend_bind" "selected" {
+}
+
+output "frontend_bind_id" {
+  value = data.haproxy-dataplane_frontend_bind.selected.id
 }
 ```
 

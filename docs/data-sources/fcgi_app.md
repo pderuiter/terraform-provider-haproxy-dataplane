@@ -11,10 +11,29 @@ Use this data source to read existing fcgi_app configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_fcgi_app" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  fcgi_app_lookup_name = "existing_fcgi_app"
+}
+
+data "haproxy-dataplane_fcgi_app" "selected" {
+}
+
+output "fcgi_app_id" {
+  value = data.haproxy-dataplane_fcgi_app.selected.id
 }
 ```
 

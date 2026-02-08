@@ -11,10 +11,29 @@ Use this data source to read existing acme configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_acme" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  acme_lookup_name = "existing_acme"
+}
+
+data "haproxy-dataplane_acme" "selected" {
+}
+
+output "acme_id" {
+  value = data.haproxy-dataplane_acme.selected.id
 }
 ```
 

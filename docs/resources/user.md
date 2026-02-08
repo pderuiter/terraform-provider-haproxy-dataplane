@@ -11,8 +11,9 @@ Use this resource to manage the user object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_user" "example" {
@@ -21,6 +22,36 @@ resource "haproxy-dataplane_user" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  user_name = "managed_user"
+}
+
+variable "userlist" {
+  type = string
+}
+
+variable "username" {
+  type = string
+}
+
+resource "haproxy-dataplane_user" "managed" {
+  userlist = var.userlist
+  username = var.username
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "user_id" {
+  value = haproxy-dataplane_user.managed.id
 }
 ```
 

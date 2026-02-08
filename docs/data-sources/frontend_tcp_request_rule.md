@@ -11,10 +11,29 @@ Use this data source to read existing frontend_tcp_request_rule configuration fr
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_frontend_tcp_request_rule" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  frontend_tcp_request_rule_lookup_name = "existing_frontend_tcp_request_rule"
+}
+
+data "haproxy-dataplane_frontend_tcp_request_rule" "selected" {
+}
+
+output "frontend_tcp_request_rule_id" {
+  value = data.haproxy-dataplane_frontend_tcp_request_rule.selected.id
 }
 ```
 

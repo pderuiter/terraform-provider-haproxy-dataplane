@@ -11,8 +11,9 @@ Use this resource to manage the frontend_ssl_front_use object in HAProxy Data Pl
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_frontend_ssl_front_use" "example" {
@@ -21,6 +22,37 @@ resource "haproxy-dataplane_frontend_ssl_front_use" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  frontend_ssl_front_use_name = "managed_frontend_ssl_front_use"
+}
+
+variable "parent_name" {
+  description = "Parent object name, for example a frontend or backend name."
+  type        = string
+}
+
+variable "index" {
+  type = string
+}
+
+resource "haproxy-dataplane_frontend_ssl_front_use" "managed" {
+  index       = var.index
+  parent_name = var.parent_name
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "frontend_ssl_front_use_id" {
+  value = haproxy-dataplane_frontend_ssl_front_use.managed.id
 }
 ```
 

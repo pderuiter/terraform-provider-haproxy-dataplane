@@ -11,10 +11,29 @@ Use this data source to read existing log_forward configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_log_forward" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  log_forward_lookup_name = "existing_log_forward"
+}
+
+data "haproxy-dataplane_log_forward" "selected" {
+}
+
+output "log_forward_id" {
+  value = data.haproxy-dataplane_log_forward.selected.id
 }
 ```
 

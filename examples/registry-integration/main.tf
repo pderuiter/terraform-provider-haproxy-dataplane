@@ -137,7 +137,7 @@ resource "haproxy-dataplane_userlist" "itest" {
 resource "haproxy-dataplane_group" "ops" {
   userlist = haproxy-dataplane_userlist.itest.name
   name     = "ops_${var.name_suffix}"
-  spec = {}
+  spec     = {}
 }
 
 resource "haproxy-dataplane_cache" "itest" {

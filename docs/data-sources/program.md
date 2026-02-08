@@ -11,10 +11,29 @@ Use this data source to read existing program configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_program" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  program_lookup_name = "existing_program"
+}
+
+data "haproxy-dataplane_program" "selected" {
+}
+
+output "program_id" {
+  value = data.haproxy-dataplane_program.selected.id
 }
 ```
 

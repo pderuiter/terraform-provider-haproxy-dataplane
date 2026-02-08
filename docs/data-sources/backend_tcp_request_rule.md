@@ -11,10 +11,29 @@ Use this data source to read existing backend_tcp_request_rule configuration fro
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_backend_tcp_request_rule" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  backend_tcp_request_rule_lookup_name = "existing_backend_tcp_request_rule"
+}
+
+data "haproxy-dataplane_backend_tcp_request_rule" "selected" {
+}
+
+output "backend_tcp_request_rule_id" {
+  value = data.haproxy-dataplane_backend_tcp_request_rule.selected.id
 }
 ```
 

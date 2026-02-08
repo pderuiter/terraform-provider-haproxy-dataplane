@@ -11,10 +11,29 @@ Use this data source to read existing backend_acl configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_backend_acl" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  backend_acl_lookup_name = "existing_backend_acl"
+}
+
+data "haproxy-dataplane_backend_acl" "selected" {
+}
+
+output "backend_acl_id" {
+  value = data.haproxy-dataplane_backend_acl.selected.id
 }
 ```
 

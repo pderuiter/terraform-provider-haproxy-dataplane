@@ -11,10 +11,29 @@ Use this data source to read existing frontend_backend_switching_rule configurat
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_frontend_backend_switching_rule" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  frontend_backend_switching_rule_lookup_name = "existing_frontend_backend_switching_rule"
+}
+
+data "haproxy-dataplane_frontend_backend_switching_rule" "selected" {
+}
+
+output "frontend_backend_switching_rule_id" {
+  value = data.haproxy-dataplane_frontend_backend_switching_rule.selected.id
 }
 ```
 

@@ -11,10 +11,29 @@ Use this data source to read existing frontend_log_target configuration from HAP
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_frontend_log_target" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  frontend_log_target_lookup_name = "existing_frontend_log_target"
+}
+
+data "haproxy-dataplane_frontend_log_target" "selected" {
+}
+
+output "frontend_log_target_id" {
+  value = data.haproxy-dataplane_frontend_log_target.selected.id
 }
 ```
 

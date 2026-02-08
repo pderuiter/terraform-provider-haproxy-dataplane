@@ -1,0 +1,26 @@
+---
+page_title: "haproxy-dataplane_runtime_backend_server Resource - HAProxy Data Plane"
+subcategory: "Configuration"
+description: |-
+  Manages HAProxy runtime backend server configuration.
+---
+
+# haproxy-dataplane_runtime_backend_server (Resource)
+
+Use this resource to manage the runtime_backend_server object in HAProxy Data Plane API.
+
+## Example Usage
+
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
+
+{{tffile "examples/resources/runtime_backend_server/example_1.tf"}}
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+{{tffile "examples/resources/runtime_backend_server/example_2.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

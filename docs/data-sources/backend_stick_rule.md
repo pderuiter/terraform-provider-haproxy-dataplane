@@ -11,10 +11,29 @@ Use this data source to read existing backend_stick_rule configuration from HAPr
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_backend_stick_rule" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  backend_stick_rule_lookup_name = "existing_backend_stick_rule"
+}
+
+data "haproxy-dataplane_backend_stick_rule" "selected" {
+}
+
+output "backend_stick_rule_id" {
+  value = data.haproxy-dataplane_backend_stick_rule.selected.id
 }
 ```
 

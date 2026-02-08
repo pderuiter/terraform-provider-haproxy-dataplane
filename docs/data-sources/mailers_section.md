@@ -11,10 +11,29 @@ Use this data source to read existing mailers_section configuration from HAProxy
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_mailers_section" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  mailers_section_lookup_name = "existing_mailers_section"
+}
+
+data "haproxy-dataplane_mailers_section" "selected" {
+}
+
+output "mailers_section_id" {
+  value = data.haproxy-dataplane_mailers_section.selected.id
 }
 ```
 

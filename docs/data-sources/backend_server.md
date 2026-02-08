@@ -11,10 +11,29 @@ Use this data source to read existing backend_server configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_backend_server" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  backend_server_lookup_name = "existing_backend_server"
+}
+
+data "haproxy-dataplane_backend_server" "selected" {
+}
+
+output "backend_server_id" {
+  value = data.haproxy-dataplane_backend_server.selected.id
 }
 ```
 

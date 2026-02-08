@@ -11,10 +11,29 @@ Use this data source to read existing global_log_target configuration from HAPro
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_global_log_target" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  global_log_target_lookup_name = "existing_global_log_target"
+}
+
+data "haproxy-dataplane_global_log_target" "selected" {
+}
+
+output "global_log_target_id" {
+  value = data.haproxy-dataplane_global_log_target.selected.id
 }
 ```
 

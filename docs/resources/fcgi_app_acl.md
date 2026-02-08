@@ -11,8 +11,9 @@ Use this resource to manage the fcgi_app_acl object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_fcgi_app_acl" "example" {
@@ -20,6 +21,32 @@ resource "haproxy-dataplane_fcgi_app_acl" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  fcgi_app_acl_name = "managed_fcgi_app_acl"
+}
+
+variable "parent_name" {
+  description = "Parent object name, for example a frontend or backend name."
+  type        = string
+}
+
+resource "haproxy-dataplane_fcgi_app_acl" "managed" {
+  parent_name = var.parent_name
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "fcgi_app_acl_id" {
+  value = haproxy-dataplane_fcgi_app_acl.managed.id
 }
 ```
 

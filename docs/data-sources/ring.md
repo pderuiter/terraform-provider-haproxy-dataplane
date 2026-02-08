@@ -11,10 +11,29 @@ Use this data source to read existing ring configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_ring" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  ring_lookup_name = "existing_ring"
+}
+
+data "haproxy-dataplane_ring" "selected" {
+}
+
+output "ring_id" {
+  value = data.haproxy-dataplane_ring.selected.id
 }
 ```
 

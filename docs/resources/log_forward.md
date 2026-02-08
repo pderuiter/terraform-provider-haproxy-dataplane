@@ -11,8 +11,9 @@ Use this resource to manage the log_forward object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_log_forward" "example" {
@@ -20,6 +21,27 @@ resource "haproxy-dataplane_log_forward" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  log_forward_name = "managed_log_forward"
+}
+
+resource "haproxy-dataplane_log_forward" "managed" {
+  name = local.log_forward_name
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "log_forward_id" {
+  value = haproxy-dataplane_log_forward.managed.id
 }
 ```
 

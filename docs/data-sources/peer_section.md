@@ -11,10 +11,29 @@ Use this data source to read existing peer_section configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_peer_section" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  peer_section_lookup_name = "existing_peer_section"
+}
+
+data "haproxy-dataplane_peer_section" "selected" {
+}
+
+output "peer_section_id" {
+  value = data.haproxy-dataplane_peer_section.selected.id
 }
 ```
 

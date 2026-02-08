@@ -1,0 +1,26 @@
+---
+page_title: "haproxy-dataplane_runtime_ssl_crt_list Data Source - HAProxy Data Plane"
+subcategory: "Configuration"
+description: |-
+  Reads HAProxy runtime ssl crt list configuration.
+---
+
+# haproxy-dataplane_runtime_ssl_crt_list (Data Source)
+
+Use this data source to read existing runtime_ssl_crt_list configuration from HAProxy.
+
+## Example Usage
+
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
+
+{{tffile "examples/data-sources/runtime_ssl_crt_list/example_1.tf"}}
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+{{tffile "examples/data-sources/runtime_ssl_crt_list/example_2.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

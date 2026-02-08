@@ -73,6 +73,18 @@ resource "haproxy-dataplane_frontend_bind" "http" {
 
 ## Authentication Patterns
 
+### Basic authentication (username/password)
+
+Use this when Data Plane API is configured with a `userlist` and basic auth.
+
+```terraform
+provider "haproxy-dataplane" {
+  endpoint = "https://haproxy.internal:5555"
+  username = var.haproxy_username
+  password = var.haproxy_password
+}
+```
+
 ### Token-based authentication
 
 Use this when your Data Plane API is fronted by a token-issuing auth flow or reverse proxy.

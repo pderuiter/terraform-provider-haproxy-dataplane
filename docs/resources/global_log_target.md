@@ -11,8 +11,9 @@ Use this resource to manage the global_log_target object in HAProxy Data Plane A
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_global_log_target" "example" {
@@ -20,6 +21,31 @@ resource "haproxy-dataplane_global_log_target" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  global_log_target_name = "managed_global_log_target"
+}
+
+variable "index" {
+  type = string
+}
+
+resource "haproxy-dataplane_global_log_target" "managed" {
+  index = var.index
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "global_log_target_id" {
+  value = haproxy-dataplane_global_log_target.managed.id
 }
 ```
 

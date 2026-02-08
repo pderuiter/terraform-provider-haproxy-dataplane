@@ -11,9 +11,16 @@ Use this resource to manage the peer_section object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 {{tffile "examples/resources/peer_section/example_1.tf"}}
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+{{tffile "examples/resources/peer_section/example_2.tf"}}
 
 {{ .SchemaMarkdown | trimspace }}

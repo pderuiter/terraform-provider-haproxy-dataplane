@@ -11,8 +11,9 @@ Use this resource to manage the group object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_group" "example" {
@@ -21,6 +22,32 @@ resource "haproxy-dataplane_group" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  group_name = "managed_group"
+}
+
+variable "userlist" {
+  type = string
+}
+
+resource "haproxy-dataplane_group" "managed" {
+  name     = local.group_name
+  userlist = var.userlist
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "group_id" {
+  value = haproxy-dataplane_group.managed.id
 }
 ```
 

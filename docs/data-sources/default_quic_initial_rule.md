@@ -11,10 +11,29 @@ Use this data source to read existing default_quic_initial_rule configuration fr
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_default_quic_initial_rule" "example" {
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  default_quic_initial_rule_lookup_name = "existing_default_quic_initial_rule"
+}
+
+data "haproxy-dataplane_default_quic_initial_rule" "selected" {
+}
+
+output "default_quic_initial_rule_id" {
+  value = data.haproxy-dataplane_default_quic_initial_rule.selected.id
 }
 ```
 

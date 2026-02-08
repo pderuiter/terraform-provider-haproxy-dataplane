@@ -11,8 +11,9 @@ Use this resource to manage the crt_load object in HAProxy Data Plane API.
 
 ## Example Usage
 
-This baseline example shows the minimum Terraform shape for this resource.
-Use it as a starting point and adjust the required fields to match your HAProxy configuration model.
+### Minimal declaration
+
+Use this pattern when you want a concise resource declaration with only required fields.
 
 ```terraform
 resource "haproxy-dataplane_crt_load" "example" {
@@ -21,6 +22,36 @@ resource "haproxy-dataplane_crt_load" "example" {
 
   # Replace with required fields for this object in your environment.
   spec = {}
+}
+```
+
+### Operational module pattern
+
+Use this pattern when exposing a reusable module interface for teams. It adds variables, a stable naming pattern, and an output.
+
+```terraform
+locals {
+  crt_load_name = "managed_crt_load"
+}
+
+variable "certificate" {
+  type = string
+}
+
+variable "crt_store" {
+  type = string
+}
+
+resource "haproxy-dataplane_crt_load" "managed" {
+  certificate = var.certificate
+  crt_store   = var.crt_store
+
+  # Replace with required fields for this object in your environment.
+  spec = {}
+}
+
+output "crt_load_id" {
+  value = haproxy-dataplane_crt_load.managed.id
 }
 ```
 

@@ -11,8 +11,16 @@ Use this data source to read existing global configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 {{tffile "examples/data-sources/global/example_1.tf"}}
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+{{tffile "examples/data-sources/global/example_2.tf"}}
 
 {{ .SchemaMarkdown | trimspace }}

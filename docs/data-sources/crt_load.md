@@ -11,11 +11,35 @@ Use this data source to read existing crt_load configuration from HAProxy.
 
 ## Example Usage
 
-This baseline example shows the required arguments for looking up this object.
+### Direct lookup
+
+Use this pattern for a straightforward read of an existing object.
 
 ```terraform
 data "haproxy-dataplane_crt_load" "example" {
   crt_store = "example"
+}
+```
+
+### Lookup with module outputs
+
+Use this pattern when a module consumes existing HAProxy objects and exports their identifiers.
+
+```terraform
+locals {
+  crt_load_lookup_name = "existing_crt_load"
+}
+
+variable "crt_store" {
+  type = string
+}
+
+data "haproxy-dataplane_crt_load" "selected" {
+  crt_store = var.crt_store
+}
+
+output "crt_load_id" {
+  value = data.haproxy-dataplane_crt_load.selected.id
 }
 ```
 
