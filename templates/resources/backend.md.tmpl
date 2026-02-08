@@ -1,0 +1,53 @@
+---
+page_title: "haproxy-dataplane_backend Resource - HAProxy Data Plane"
+subcategory: "Configuration"
+description: |-
+  Creates and manages an HAProxy backend section.
+---
+
+# haproxy-dataplane_backend (Resource)
+
+Use this resource to create a backend and define balancing behavior.
+
+## Example Usage
+
+### API backend with round-robin balancing
+
+```terraform
+resource "haproxy-dataplane_backend" "api" {
+  name = "be_api"
+
+  spec = {
+    mode = "http"
+    balance = {
+      algorithm = "roundrobin"
+    }
+  }
+}
+```
+
+### Backend with health checks and retry tuning
+
+```terraform
+resource "haproxy-dataplane_backend" "payments" {
+  name = "be_payments"
+
+  spec = {
+    mode          = "http"
+    retries       = 3
+    server_timeout = 30000
+    connect_timeout = 5000
+
+    balance = {
+      algorithm = "leastconn"
+    }
+  }
+}
+```
+
+## Notes
+
+- Create `haproxy-dataplane_backend_server` resources to attach servers to this backend.
+- Use `parent_name = haproxy-dataplane_backend.<name>.name` when creating child resources.
+
+{{ .SchemaMarkdown | trimspace }}

@@ -1,0 +1,57 @@
+---
+page_title: "haproxy-dataplane_frontend Resource - HAProxy Data Plane"
+subcategory: "Configuration"
+description: |-
+  Creates and manages an HAProxy frontend section.
+---
+
+# haproxy-dataplane_frontend (Resource)
+
+Use this resource to define request entry points and routing behavior.
+
+## Example Usage
+
+### HTTP frontend routing to a backend
+
+```terraform
+resource "haproxy-dataplane_backend" "api" {
+  name = "be_api"
+
+  spec = {
+    mode = "http"
+    balance = {
+      algorithm = "roundrobin"
+    }
+  }
+}
+
+resource "haproxy-dataplane_frontend" "public" {
+  name = "fe_public"
+
+  spec = {
+    mode            = "http"
+    default_backend = haproxy-dataplane_backend.api.name
+  }
+}
+```
+
+### Frontend with request logging enabled
+
+```terraform
+resource "haproxy-dataplane_frontend" "public" {
+  name = "fe_public"
+
+  spec = {
+    mode     = "http"
+    httplog  = true
+    maxconn  = 20000
+  }
+}
+```
+
+## Notes
+
+- Add one or more `haproxy-dataplane_frontend_bind` resources to expose listeners.
+- Use backend switching rules for path or host based routing.
+
+{{ .SchemaMarkdown | trimspace }}
