@@ -1,0 +1,8 @@
+include:
+  - project: 'wbyc/infra/ci-cd-toolkit'
+    ref: 'main'
+    file: '/templates/infra/terraform-apply.yml'
+
+variables:
+  TENANT: "wbyc"
+  ENVIRONMENT: "prd"
