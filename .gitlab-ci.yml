@@ -2,6 +2,11 @@ include:
   - project: 'wbyc/infra/ci-cd-toolkit'
     ref: 'main'
     file: '/templates/infra/terraform-apply.yml'
+  # SonarQube is standard (ci-cd-toolkit README): scan:sonarqube on the
+  # default branch, blocking quality gate.
+  - project: 'wbyc/infra/ci-cd-toolkit'
+    ref: 'main'
+    file: '/templates/common/sonarqube.yml'
 
 variables:
   TENANT: "wbyc"
