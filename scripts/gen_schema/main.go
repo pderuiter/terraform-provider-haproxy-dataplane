@@ -27,7 +27,7 @@ type genResult struct {
 func main() {
 	root := "."
 	specPath := filepath.Join(root, "spec", "openapi.json")
-	specBytes, err := os.ReadFile(specPath)
+	specBytes, err := os.ReadFile(specPath) // #nosec G304 -- fixed repo path, dev-time generator
 	if err != nil {
 		panic(err)
 	}
@@ -85,7 +85,7 @@ func writeFile(name string, res genResult) {
 	buf.WriteString("\n}\n")
 
 	outPath := filepath.Join("internal", "provider", fmt.Sprintf("gen_%s_spec.go", name))
-	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil { // #nosec G306 -- generated Go source, must stay world-readable
 		panic(err)
 	}
 }
@@ -547,7 +547,7 @@ func writeRegistry(spec *openapi3.T) {
 	buf.WriteString("}\n")
 
 	outPath := filepath.Join("internal", "provider", "gen_schema_registry.go")
-	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil { // #nosec G306 -- generated Go source, must stay world-readable
 		panic(err)
 	}
 }
