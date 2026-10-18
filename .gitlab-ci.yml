@@ -1,13 +1,13 @@
+---
+# Terraform provider written in Go: the toolkit Go pipeline (golangci-lint,
+# go vet, gofmt, unit tests, build; SonarQube comes with it). Not
+# templates/infra/terraform-apply.yml -- that is for applying live
+# infrastructure, and this repo has none.
 include:
-  - project: 'wbyc/infra/ci-cd-toolkit'
-    ref: 'main'
-    file: '/templates/infra/terraform-apply.yml'
-  # SonarQube is standard (ci-cd-toolkit README): scan:sonarqube on the
-  # default branch, blocking quality gate.
-  - project: 'wbyc/infra/ci-cd-toolkit'
-    ref: 'main'
-    file: '/templates/common/sonarqube.yml'
+  - project: "wbyc/infra/ci-cd-toolkit"
+    ref: "v3.9.6"
+    file: "/templates/ci/go.yml"
 
 variables:
-  TENANT: "wbyc"
-  ENVIRONMENT: "prd"
+  # main.go lives in the repository root.
+  GO_MAIN_PACKAGE: "."
