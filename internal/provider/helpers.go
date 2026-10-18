@@ -92,18 +92,6 @@ func objectToMapWithSchema(ctx context.Context, obj types.Object, schemaName str
 	return transformTFToAPIMap(out, meta), diags
 }
 
-func mapToObject(ctx context.Context, typesMap map[string]attr.Type, input map[string]any, dropKeys []string) (types.Object, diag.Diagnostics) {
-	filtered := map[string]any{}
-	for k, v := range input {
-		filtered[k] = v
-	}
-	for _, k := range dropKeys {
-		delete(filtered, k)
-	}
-	obj, diags := types.ObjectValueFrom(ctx, typesMap, filtered)
-	return obj, diags
-}
-
 func mapToObjectWithSchema(ctx context.Context, schemaName string, input map[string]any, dropKeys []string) (types.Object, diag.Diagnostics) {
 	meta, ok := schemaMetaFor(schemaName)
 	if ok && meta != nil {
