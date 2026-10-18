@@ -65,7 +65,8 @@ func New(cfg Config) (*Client, error) {
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
 	}
 
-	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.Insecure} //nolint:gosec // #nosec G402 -- opt-in via the provider's `insecure` attribute
+	// #nosec G402 -- InsecureSkipVerify is opt-in via the provider's `insecure` attribute.
+	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.Insecure} //nolint:gosec
 	if cfg.CACertPEM != "" {
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM([]byte(cfg.CACertPEM)) {
