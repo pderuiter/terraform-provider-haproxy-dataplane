@@ -65,6 +65,7 @@ func New(cfg Config) (*Client, error) {
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
 	}
 
+	// #nosec G402 -- InsecureSkipVerify is opt-in via the provider's `insecure` attribute.
 	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.Insecure} //nolint:gosec
 	if cfg.CACertPEM != "" {
 		pool := x509.NewCertPool()
@@ -134,7 +135,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)

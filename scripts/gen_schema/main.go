@@ -27,7 +27,7 @@ type genResult struct {
 func main() {
 	root := "."
 	specPath := filepath.Join(root, "spec", "openapi.json")
-	specBytes, err := os.ReadFile(specPath)
+	specBytes, err := os.ReadFile(specPath) // #nosec G304 -- fixed repo path, dev-time generator
 	if err != nil {
 		panic(err)
 	}
@@ -74,18 +74,18 @@ func writeFile(name string, res genResult) {
 	}
 	buf.WriteString(")\n\n")
 
-	buf.WriteString(fmt.Sprintf("func %sSpecAttributes() map[string]schema.Attribute {\n", name))
+	fmt.Fprintf(&buf, "func %sSpecAttributes() map[string]schema.Attribute {\n", name)
 	buf.WriteString("\treturn ")
 	buf.WriteString(res.SchemaCode)
 	buf.WriteString("\n}\n\n")
 
-	buf.WriteString(fmt.Sprintf("func %sSpecAttrTypes() map[string]attr.Type {\n", name))
+	fmt.Fprintf(&buf, "func %sSpecAttrTypes() map[string]attr.Type {\n", name)
 	buf.WriteString("\treturn ")
 	buf.WriteString(res.TypeCode)
 	buf.WriteString("\n}\n")
 
 	outPath := filepath.Join("internal", "provider", fmt.Sprintf("gen_%s_spec.go", name))
-	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil { // #nosec G306 -- generated Go source, must stay world-readable
 		panic(err)
 	}
 }
@@ -133,8 +133,8 @@ func generateObjectSchema(spec *openapi3.T, schemaRef *openapi3.SchemaRef, exclu
 			typeBuf.WriteString(" ")
 		}
 		tfKey := tfName(k)
-		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, attrMap[tfKey].SchemaCode))
-		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, attrMap[tfKey].TypeCode))
+		fmt.Fprintf(&schemaBuf, "\"%s\": %s,", tfKey, attrMap[tfKey].SchemaCode)
+		fmt.Fprintf(&typeBuf, "\"%s\": %s,", tfKey, attrMap[tfKey].TypeCode)
 	}
 
 	schemaBuf.WriteString("}")
@@ -329,8 +329,8 @@ func buildObjectMaps(spec *openapi3.T, schema *openapi3.Schema) (string, string,
 			hasDynamic = true
 		}
 		tfKey := tfName(k)
-		schemaBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, child.SchemaCode))
-		typeBuf.WriteString(fmt.Sprintf("\"%s\": %s,", tfKey, child.TypeCode))
+		fmt.Fprintf(&schemaBuf, "\"%s\": %s,", tfKey, child.SchemaCode)
+		fmt.Fprintf(&typeBuf, "\"%s\": %s,", tfKey, child.TypeCode)
 	}
 
 	schemaBuf.WriteString("}")
@@ -351,9 +351,7 @@ func mergeAllOf(spec *openapi3.T, schema *openapi3.Schema) *openapi3.Schema {
 		for k, v := range child.Properties {
 			merged.Properties[k] = v
 		}
-		for _, req := range child.Required {
-			merged.Required = append(merged.Required, req)
-		}
+		merged.Required = append(merged.Required, child.Required...)
 	}
 	return merged
 }
@@ -423,7 +421,7 @@ func buildObjectMeta(spec *openapi3.T, schema *openapi3.Schema) string {
 		}
 		tfKey := tfName(k)
 		metaFields := generateMeta(spec, merged.Properties[k])
-		buf.WriteString(fmt.Sprintf("\"%s\": &schemaFieldMeta{APIName: %q, %s},", tfKey, k, metaFields))
+		fmt.Fprintf(&buf, "\"%s\": &schemaFieldMeta{APIName: %q, %s},", tfKey, k, metaFields)
 	}
 	buf.WriteString("}")
 	return buf.String()
@@ -481,35 +479,35 @@ func writeRegistry(spec *openapi3.T) {
 	buf.WriteString("var schemaAttributesRegistry = map[string]map[string]rschema.Attribute{\n")
 	for name, ref := range spec.Components.Schemas {
 		schema := resolveSchema(spec, ref)
-		if !(hasType(schema, "object") || len(schema.AllOf) > 0) {
+		if !hasType(schema, "object") && len(schema.AllOf) == 0 {
 			continue
 		}
 		attrRes := generateObjectSchema(spec, ref, map[string]bool{})
 		schemaCode := strings.ReplaceAll(attrRes.SchemaCode, "schema.", "rschema.")
-		buf.WriteString(fmt.Sprintf("\t%q: %s,\n", name, schemaCode))
+		fmt.Fprintf(&buf, "\t%q: %s,\n", name, schemaCode)
 	}
 	buf.WriteString("}\n\n")
 
 	buf.WriteString("var schemaAttrTypesRegistry = map[string]map[string]attr.Type{\n")
 	for name, ref := range spec.Components.Schemas {
 		schema := resolveSchema(spec, ref)
-		if !(hasType(schema, "object") || len(schema.AllOf) > 0) {
+		if !hasType(schema, "object") && len(schema.AllOf) == 0 {
 			continue
 		}
 		attrRes := generateObjectSchema(spec, ref, map[string]bool{})
-		buf.WriteString(fmt.Sprintf("\t%q: %s,\n", name, attrRes.TypeCode))
+		fmt.Fprintf(&buf, "\t%q: %s,\n", name, attrRes.TypeCode)
 	}
 	buf.WriteString("}\n\n")
 
 	buf.WriteString("var datasourceAttributesRegistry = map[string]map[string]dschema.Attribute{\n")
 	for name, ref := range spec.Components.Schemas {
 		schema := resolveSchema(spec, ref)
-		if !(hasType(schema, "object") || len(schema.AllOf) > 0) {
+		if !hasType(schema, "object") && len(schema.AllOf) == 0 {
 			continue
 		}
 		attrRes := generateObjectSchema(spec, ref, map[string]bool{})
 		dsCode := strings.ReplaceAll(attrRes.SchemaCode, "schema.", "dschema.")
-		buf.WriteString(fmt.Sprintf("\t%q: %s,\n", name, dsCode))
+		fmt.Fprintf(&buf, "\t%q: %s,\n", name, dsCode)
 	}
 	buf.WriteString("}\n\n")
 
@@ -520,7 +518,7 @@ func writeRegistry(spec *openapi3.T) {
 		if schema == nil {
 			continue
 		}
-		buf.WriteString(fmt.Sprintf("\t%q: &schemaFieldMeta{%s},\n", name, meta))
+		fmt.Fprintf(&buf, "\t%q: &schemaFieldMeta{%s},\n", name, meta)
 	}
 	buf.WriteString("}\n\n")
 
@@ -547,7 +545,7 @@ func writeRegistry(spec *openapi3.T) {
 	buf.WriteString("}\n")
 
 	outPath := filepath.Join("internal", "provider", "gen_schema_registry.go")
-	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil { // #nosec G306 -- generated Go source, must stay world-readable
 		panic(err)
 	}
 }
