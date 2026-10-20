@@ -5,7 +5,7 @@
 # infrastructure, and this repo has none.
 include:
   - project: "wbyc/infra/ci-cd-toolkit"
-    ref: "v3.9.13"
+    ref: "$CI_CD_TOOLKIT_VERSION"
     file: "/templates/ci/go.yml"
 
 variables:
