@@ -12,6 +12,15 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+# The provider under test is this checkout, through dev_overrides (the version
+# pinned in examples/registry-integration is then ignored). PROVIDER_BINARY:
+# a prebuilt linux/amd64 provider (CI builds it in a Go job); without it the
+# provider is built here, which needs Go.
+if [ -z "${PROVIDER_BINARY:-}" ] && ! command -v go >/dev/null 2>&1; then
+  echo "go is required on PATH (or set PROVIDER_BINARY)" >&2
+  exit 1
+fi
+
 compose() {
   docker compose -f "$COMPOSE_FILE" "$@"
 }
@@ -45,11 +54,12 @@ terraform_cmd() {
     -e TF_VAR_haproxy_admin_password \
     -e TF_VAR_name_suffix \
     -e TF_VAR_dataplane_endpoint \
+    -e TF_CLI_CONFIG_FILE=/tmp/tf-dev.tfrc \
     "$TF_CONTAINER_NAME" terraform -chdir=/workspace "$@"
 }
 
 start_terraform_container() {
-  TF_CONTAINER_NAME="tf-integration-$(date +%s)-$$"
+  TF_CONTAINER_NAME="${COMPOSE_PROJECT_NAME:+${COMPOSE_PROJECT_NAME}-}tf-integration-$(date +%s)-$$"
   docker run -d --rm \
     --network "$NETWORK_NAME" \
     --name "$TF_CONTAINER_NAME" \
@@ -82,6 +92,20 @@ configure_haproxy_container() {
     dump_compose_logs
     return 1
   fi
+
+  # The image's first boot generates dataplaneapi.yml, haproxy.cfg and an
+  # admin password (oneshot dataplaneapi-config). Copying before it finishes
+  # lets it overwrite ours: the API then runs the generated config and
+  # rejects the password read from dev/haproxy with 401.
+  local tries=0
+  until docker logs "$haproxy_id" 2>&1 | grep -q "oneshot dataplaneapi-config completed"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 60 ]; then
+      echo "Timed out waiting for the haproxy container's first-boot config" >&2
+      return 1
+    fi
+    sleep 1
+  done
 
   docker exec "$haproxy_id" sh -lc \
     "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
@@ -211,8 +235,28 @@ curl_via_network -fsS -X PUT http://consul:8500/v1/agent/service/register \
   -H 'Content-Type: application/json' \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
+mkdir -p "$WORK_DIR/tf-dev-provider"
+if [ -n "${PROVIDER_BINARY:-}" ]; then
+  cp "$PROVIDER_BINARY" "$WORK_DIR/tf-dev-provider/terraform-provider-haproxy-dataplane"
+else
+  (cd "$ROOT_DIR" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$WORK_DIR/tf-dev-provider/terraform-provider-haproxy-dataplane" .)
+fi
+cat > "$WORK_DIR/tf-dev.tfrc" <<'EOF'
+provider_installation {
+  dev_overrides {
+    "pderuiter/haproxy-dataplane" = "/tmp/tf-dev-provider"
+  }
+  direct {}
+}
+EOF
+docker exec "$TF_CONTAINER_NAME" mkdir -p /tmp/tf-dev-provider >/dev/null
+docker cp "$WORK_DIR/tf-dev-provider/terraform-provider-haproxy-dataplane" \
+  "$TF_CONTAINER_NAME:/tmp/tf-dev-provider/terraform-provider-haproxy-dataplane"
+docker cp "$WORK_DIR/tf-dev.tfrc" "$TF_CONTAINER_NAME:/tmp/tf-dev.tfrc"
+docker exec "$TF_CONTAINER_NAME" chmod +x /tmp/tf-dev-provider/terraform-provider-haproxy-dataplane
+
 pushd "$EXAMPLE_DIR" >/dev/null
-rm -rf .terraform .terraform.lock.hcl terraform.tfstate* 
+rm -rf .terraform .terraform.lock.hcl terraform.tfstate*
 
 echo "Initializing terraform..."
 terraform_cmd init

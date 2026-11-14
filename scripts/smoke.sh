@@ -43,6 +43,20 @@ configure_haproxy_container() {
     return 1
   fi
 
+  # The image's first boot generates dataplaneapi.yml, haproxy.cfg and an
+  # admin password (oneshot dataplaneapi-config). Copying before it finishes
+  # lets it overwrite ours: the API then runs the generated config and
+  # rejects the password read from dev/haproxy with 401.
+  local tries=0
+  until docker logs "$haproxy_id" 2>&1 | grep -q "oneshot dataplaneapi-config completed"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 60 ]; then
+      echo "Timed out waiting for the haproxy container's first-boot config" >&2
+      return 1
+    fi
+    sleep 1
+  done
+
   docker exec "$haproxy_id" sh -lc \
     "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
   docker cp "$HAPROXY_CONFIG_DIR/." "$haproxy_id:/usr/local/etc/haproxy/"

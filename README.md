@@ -8,7 +8,7 @@ This provider is generated from the HAProxy Data Plane API OpenAPI spec and incl
 
 ## Requirements
 
-- Go 1.24+
+- Go (version from `go.mod`)
 - Terraform 1.5+
 - Docker (for local testing)
 - HAProxy Data Plane API (v3 path by default)
@@ -107,12 +107,21 @@ Examples:
 - `haproxy-dataplane_runtime_acl_entry` (uses `runtime_id`)
 - `haproxy-dataplane_runtime_backend_server`
 
-## Smoke Tests (Docker)
+## Smoke and Integration Tests (Docker)
 
 Run the local smoke test with Docker and a local provider build:
 
 ```bash
 ./scripts/smoke.sh
+```
+
+The integration scenarios run this checkout's provider against HAProxy with
+the Data Plane API, Consul and an echo backend (`docker-compose.integration.yml`).
+CI runs both on every MR, on `main` and before every release:
+
+```bash
+./scripts/registry_integration.sh          # traffic, Consul discovery, ACME, typed resources
+./scripts/registry_runtime_integration.sh  # runtime API
 ```
 
 ## Notes
@@ -125,4 +134,13 @@ Run the local smoke test with Docker and a local provider build:
 
 - Harden runtime coverage and acceptance tests.
 - Improve registry documentation and examples.
-- Expand CI coverage.
+
+## Repository
+
+Development happens on [gitlab.bsdserver.nl](https://gitlab.bsdserver.nl/wbyc/infra/iac/terraform/terraform-provider-haproxy-dataplane);
+[github.com/pderuiter/terraform-provider-haproxy-dataplane](https://github.com/pderuiter/terraform-provider-haproxy-dataplane)
+is a read-only mirror that the Terraform Registry publishes from. Pull requests
+on GitHub are not merged there; open an issue instead.
+
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): local environment, builds, tests.
+- [RELEASING.md](RELEASING.md): versioning, the release pipeline, signing keys.

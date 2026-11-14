@@ -1,10 +1,10 @@
+# Integration environment for scripts/registry_*integration.sh. No published
+# ports: the scripts reach every service over the compose network, and host
+# ports would collide on the shared CI docker host. For a local environment
+# with ports, use docker-compose.yml.
 services:
   haproxy:
     image: haproxytech/haproxy-debian:s6-latest
-    ports:
-      - "5555:5555"
-      - "18081:18081"
-      - "18082:18082"
     depends_on:
       - consul
       - echo
@@ -12,10 +12,6 @@ services:
   consul:
     image: hashicorp/consul:1.22.7
     command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0 -bind=0.0.0.0
-    ports:
-      - "8500:8500"
-      - "8600:8600/tcp"
-      - "8600:8600/udp"
 
   echo:
     image: hashicorp/http-echo:1.0

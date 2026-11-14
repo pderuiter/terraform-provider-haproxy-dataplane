@@ -12,8 +12,10 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v go >/dev/null 2>&1; then
-  echo "go is required on PATH" >&2
+# PROVIDER_BINARY: a prebuilt linux/amd64 provider (CI builds it in a Go job);
+# without it the provider is built here, which needs Go.
+if [ -z "${PROVIDER_BINARY:-}" ] && ! command -v go >/dev/null 2>&1; then
+  echo "go is required on PATH (or set PROVIDER_BINARY)" >&2
   exit 1
 fi
 
@@ -61,7 +63,7 @@ terraform_cmd() {
 }
 
 start_terraform_container() {
-  TF_CONTAINER_NAME="tf-runtime-$(date +%s)-$$"
+  TF_CONTAINER_NAME="${COMPOSE_PROJECT_NAME:+${COMPOSE_PROJECT_NAME}-}tf-runtime-$(date +%s)-$$"
   docker run -d --rm \
     --network "$NETWORK_NAME" \
     --name "$TF_CONTAINER_NAME" \
@@ -94,6 +96,20 @@ configure_haproxy_container() {
     dump_compose_logs
     return 1
   fi
+
+  # The image's first boot generates dataplaneapi.yml, haproxy.cfg and an
+  # admin password (oneshot dataplaneapi-config). Copying before it finishes
+  # lets it overwrite ours: the API then runs the generated config and
+  # rejects the password read from dev/haproxy with 401.
+  local tries=0
+  until docker logs "$haproxy_id" 2>&1 | grep -q "oneshot dataplaneapi-config completed"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 60 ]; then
+      echo "Timed out waiting for the haproxy container's first-boot config" >&2
+      return 1
+    fi
+    sleep 1
+  done
 
   docker exec "$haproxy_id" sh -lc \
     "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
@@ -199,7 +215,11 @@ curl_via_network -fsS -X PUT http://consul:8500/v1/agent/service/register \
   -d "{\"Name\":\"echo\",\"ID\":\"echo-1\",\"Address\":\"${ECHO_IP}\",\"Port\":5678}" >/dev/null
 
 mkdir -p /tmp/tf-dev-provider-runtime
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane "$ROOT_DIR"
+if [ -n "${PROVIDER_BINARY:-}" ]; then
+  cp "$PROVIDER_BINARY" /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane
+else
+  (cd "$ROOT_DIR" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/tf-dev-provider-runtime/terraform-provider-haproxy-dataplane .)
+fi
 cat > /tmp/tf-dev-runtime.tfrc <<'EOF'
 provider_installation {
   dev_overrides {

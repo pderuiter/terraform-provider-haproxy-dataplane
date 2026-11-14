@@ -1,7 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>wbyc/infra/renovate-config"],
-  "description": "TEMPORARY: schedule override for the first full pass after the repo was re-enabled (renovate-config !13). Remove it in the GitLab release-flow migration MR so the repo returns to the preset's weekly Monday batch.",
-  "schedule": ["at any time"],
-  "updateNotScheduled": true
+  "extends": ["local>wbyc/infra/renovate-config"]
 }
