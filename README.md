@@ -144,3 +144,8 @@ on GitHub are not merged there; open an issue instead.
 
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): local environment, builds, tests.
 - [RELEASING.md](RELEASING.md): versioning, the release pipeline, signing keys.
+
+## License
+
+[Mozilla Public License 2.0](LICENSE), the licence of the HashiCorp
+provider scaffolding.
