@@ -1,61 +1,67 @@
+# BUILD ONLY. Produces the release in the layout the Terraform Registry
+# requires (https://developer.hashicorp.com/terraform/registry/providers/publishing):
+# one zip per OS/arch with the binary terraform-provider-haproxy-dataplane_v<version>,
+# and a SHA256SUMS file covering the zips and the manifest.
+#
+# GoReleaser neither signs nor publishes: build:release in .gitlab-ci.yml runs
+# `goreleaser release --skip=publish` on our runners, then
+#   sign:gpg      adds the detached SHA256SUMS.sig (Registry signing key)
+#   sign:cosign   adds <file>.sigstore.json bundles (estate cosign key)
+#   publish:nexus stores the set in Nexus (raw repo terraform-providers)
+#   publish:github copies exactly those files from Nexus to the GitHub release.
 version: 2
 
 project_name: terraform-provider-haproxy-dataplane
 
 before:
   hooks:
-    - go mod tidy
+    - go mod download
 
 builds:
-  - id: terraform-provider-haproxy-dataplane
-    main: .
-    binary: terraform-provider-haproxy-dataplane_v{{ .Version }}
-    env:
+  - env:
+      # Static binaries: HCP Terraform and other runners cannot install libraries.
       - CGO_ENABLED=0
+    mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
+    ldflags:
+      - "-s -w -X main.version={{ .Version }}"
     goos:
-      - darwin
-      - linux
+      - freebsd
       - windows
+      - linux
+      - darwin
     goarch:
       - amd64
+      - "386"
+      - arm
       - arm64
     ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
       - goos: windows
-        goarch: arm64
-    mod_timestamp: '{{ .CommitTimestamp }}'
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
+        goarch: arm
+    binary: "{{ .ProjectName }}_v{{ .Version }}"
 
 archives:
-  - formats: ['zip']
-    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  # The manifest is checksummed under its release name; build:release copies
+  # the file itself into dist/ under that name.
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
-  extra_files:
-    - glob: terraform-registry-manifest.json
-      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
 
-signs:
-  - artifacts: checksum
-    args:
-      - '--batch'
-      - '--yes'
-      - '--detach-sign'
-      - '--local-user'
-      - '{{ .Env.GPG_FINGERPRINT }}'
-      - '--output'
-      - '${signature}'
-      - '${artifact}'
-
+# Publishing is done by publish:github from the Nexus copy, not by GoReleaser.
 release:
-  draft: false
-  extra_files:
-    - glob: terraform-registry-manifest.json
-      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
-  github:
-    owner: pderuiter
-    name: terraform-provider-haproxy-dataplane
+  disable: true
+
+# Release notes are written by scripts/release-notes.sh.
+changelog:
+  disable: true

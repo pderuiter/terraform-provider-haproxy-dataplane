@@ -1,16 +1,306 @@
----
-# Terraform provider written in Go: the toolkit Go pipeline (golangci-lint,
-# go vet, gofmt, unit tests, build; SonarQube comes with it). Not
-# templates/infra/terraform-apply.yml -- that is for applying live
-# infrastructure, and this repo has none.
+# Pipeline for terraform-provider-haproxy-dataplane.
+#
+# Everything is built, tested and signed on our own runners; GitLab is the
+# source of truth and Nexus holds the copy of record of every release. GitHub
+# (pderuiter/terraform-provider-haproxy-dataplane) is a mirror of the
+# repository AND of the release artefacts, and exists only because the
+# Terraform Registry ingests GitHub releases. Same flow as
+# terraform-provider-listmonk.
+#
+#   MR / main   lint (blocking), unit tests, integration tests against a real
+#               HAProxy Data Plane API and Consul, govulncheck/gosec/trivy.
+#   main        mirror:github pushes main to GitHub; release:tag (toolkit)
+#               tags vX.Y.Z from the Conventional Commits since the last tag.
+#   tag vX.Y.Z  tests again, then
+#                 build:release   GoReleaser, build only: zips, SHA256SUMS, manifest
+#                 sign:gpg        SHA256SUMS.sig with the Registry signing key
+#                 sign:cosign     <file>.sigstore.json with the estate cosign key
+#                 publish:nexus   the signed set -> Nexus raw repo terraform-providers
+#                 publish:github  those files, from Nexus, -> GitHub release -> Registry
+#                 verify:registry `terraform init` from the Registry, signature checked
+#
+# Secrets (GPG key, GitHub token, Nexus publish account) and cosign transit
+# signing come from Vault through the JWT role RELEASE_VAULT_ROLE, which Vault
+# binds to this project's protected refs. See RELEASING.md.
 include:
-  - project: "wbyc/infra/ci-cd-toolkit"
-    ref: "$CI_CD_TOOLKIT_VERSION"
-    file: "/templates/ci/go.yml"
+  - project: wbyc/infra/ci-cd-toolkit
+    ref: $CI_CD_TOOLKIT_VERSION
+    file:
+      - /templates/common/stages.yml
+      - /templates/ci/go.yml
+      - /templates/common/release.yml
+      - /templates/common/cosign.yml
+
+# MR pipelines for MR branches, branch pipelines otherwise: one pipeline per
+# push, not a duplicate branch + MR pair.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
 
 variables:
+  APP_NAME: "terraform-provider-haproxy-dataplane"
   # main.go lives in the repository root.
   GO_MAIN_PACKAGE: "."
-  # base-go release (Go, golangci-lint, govulncheck). The toolkit default
-  # (1.0.1, Go 1.27.2) fails scan:govulncheck on GO-2026-6859/GO-2026-6809.
+  # base-go release (Go, golangci-lint, govulncheck). Its Go version must be
+  # at least the toolchain line in go.mod: the job image's GOTOOLCHAIN=local
+  # makes an older one fail instead of downloading another toolchain. Release
+  # binaries embed the standard library, so this Go is what users run.
   BASE_GO_VERSION: "1.2.0"
+  TF_VERSION_LATEST: "1.17.1"
+  # Vault: JWT role of the release jobs (terragrunt-live prd/security/
+  # vault-jwt-auth). Its own variable, like COSIGN_VAULT_ROLE: the wbyc group
+  # variable VAULT_AUTH_ROLE would override a YAML VAULT_AUTH_ROLE.
+  RELEASE_VAULT_ROLE: "gitlab-ci-terraform-registry"
+  # KV v2 paths under secret/: gpg {private_key, passphrase}.
+  VAULT_SECRET_BASE: "wbyc/prd/infra/terraform-registry"
+  # GitHub PAT {token}, shared by every provider repository (vault-management).
+  VAULT_GITHUB_PATH: "wbyc/prd/infra/github/pderuiter"
+  # Nexus service account ci-publish {username, password} (prd/infra/nexus-security).
+  VAULT_NEXUS_PATH: "prod/nexus/ci-publish"
+  NEXUS_URL: "https://nexus.bsdserver.nl"
+  # ALLOW_ONCE raw repository (prd/infra/nexus-repositories).
+  NEXUS_RAW_REPO: "terraform-providers"
+  GITHUB_REPOSITORY: "pderuiter/terraform-provider-haproxy-dataplane"
+  ALPINE_IMAGE: "${NEXUS_DOCKERHUB}/library/alpine:3.24.2"
+
+# ==============================================================================
+# Lint: blocking (the toolkit marks its lint jobs allow_failure).
+# ==============================================================================
+
+lint:golangci:
+  allow_failure: false
+
+lint:go-vet:
+  allow_failure: false
+
+lint:go-fmt:
+  allow_failure: false
+
+# ==============================================================================
+# Integration tests: the provider against a real HAProxy Data Plane API.
+# ==============================================================================
+
+.integration_rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# The provider from this checkout, for the integration job's dev_overrides.
+build:integration-provider:
+  extends:
+    - .go_base
+    - .integration_rules
+  stage: test
+  script:
+    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o it/terraform-provider-haproxy-dataplane .
+  artifacts:
+    paths:
+      - it/terraform-provider-haproxy-dataplane
+    expire_in: 1 day
+
+# docker-compose.integration.yml (HAProxy with the Data Plane API, Consul, an
+# echo backend) and both scenarios: registry_integration.sh (traffic, Consul
+# service discovery, ACME, typed resources) and registry_runtime_integration.sh
+# (runtime API). Terraform runs in a container on the compose network.
+#
+# docker talks to the runner host's daemon (socket mounted into every job, as
+# in the toolkit's molecule jobs: no dind on our runners). Everything this job
+# starts is named after COMPOSE_PROJECT_NAME, so concurrent jobs do not meet
+# and after_script can remove what a cancelled run leaves behind.
+test:integration-docker:
+  extends: .integration_rules
+  stage: test
+  image: ${NEXUS_DOCKERHUB}/library/docker:24
+  needs:
+    - job: build:integration-provider
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    COMPOSE_PROJECT_NAME: "haproxy-it-${CI_JOB_ID}"
+    PROVIDER_BINARY: "${CI_PROJECT_DIR}/it/terraform-provider-haproxy-dataplane"
+  before_script:
+    - apk add --no-cache bash >/dev/null
+    - docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'
+    - docker compose version
+    - printf '%s' "${REGISTRY_PASSWORD}" | docker login --username "${REGISTRY_USERNAME}" --password-stdin "${NEXUS_DOCKERHUB%%/*}"
+    - scripts/ci-pull-images.sh
+  script:
+    - scripts/registry_integration.sh
+    - scripts/registry_runtime_integration.sh
+  after_script:
+    - docker ps -aq --filter "name=${COMPOSE_PROJECT_NAME}" | xargs -r docker rm -f >/dev/null 2>&1 || true
+    - docker network ls -q --filter "name=${COMPOSE_PROJECT_NAME}" | xargs -r docker network rm >/dev/null 2>&1 || true
+  timeout: 30m
+  allow_failure: false
+
+# Not applicable to this provider: replaced by the jobs above and below.
+test:integration:
+  rules:
+    - when: never
+
+test:acceptance:
+  rules:
+    - when: never
+
+test:e2e:
+  rules:
+    - when: never
+
+build:binary:
+  rules:
+    - when: never
+
+publish:binaries:
+  rules:
+    - when: never
+
+# ==============================================================================
+# GitHub mirror and release.
+# ==============================================================================
+
+.release_vault:
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: "${CI_SERVER_URL}"
+  interruptible: false
+  # The Vault role only admits protected refs; don't start where it refuses.
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+
+# Release tags: vX.Y.Z or vX.Y.Z-<pre>. Pre-releases are published as GitHub
+# pre-releases, which users only get by pinning the exact version.
+.release_tag_rules:
+  rules:
+    - !reference [.release_vault, rules]
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+
+# Push main to GitHub so the mirror always shows the code behind the next
+# release. Fast-forward only: a commit made on GitHub fails this job.
+mirror:github:
+  extends: .release_vault
+  stage: publish
+  image: ${ALPINE_IMAGE}
+  variables:
+    GIT_DEPTH: "0"
+    GIT_STRATEGY: clone
+  needs:
+    - job: test:unit
+    - job: test:integration-docker
+  before_script:
+    - apk add --no-cache git curl jq >/dev/null
+  script:
+    - . scripts/vault.sh
+    - vault_login
+    - export GITHUB_TOKEN="$(vault_kv "${VAULT_GITHUB_PATH}" token)"
+    - scripts/github-mirror.sh branch
+  rules:
+    - !reference [.release_vault, rules]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+
+# GoReleaser in the standard Go image, build only (no signing, no publishing,
+# no secrets). The manifest is copied into dist/ under its release name; the
+# SHA256SUMS already covers it.
+build:release:
+  extends: .go_base
+  stage: build
+  needs:
+    - job: test:unit
+    - job: test:integration-docker
+  script:
+    - go install "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}"
+    - goreleaser release --clean --skip=publish
+    - cp terraform-registry-manifest.json "dist/terraform-provider-haproxy-dataplane_${CI_COMMIT_TAG#v}_manifest.json"
+    - (cd dist && sha256sum -c terraform-provider-haproxy-dataplane_*_SHA256SUMS)
+  artifacts:
+    paths:
+      - dist/*.zip
+      - dist/*_SHA256SUMS
+      - dist/*_manifest.json
+    expire_in: 30 days
+  rules:
+    - !reference [.release_tag_rules, rules]
+
+sign:gpg:
+  extends: .release_vault
+  stage: build
+  image: ${ALPINE_IMAGE}
+  needs:
+    - job: build:release
+  script:
+    - scripts/sign-gpg.sh
+  artifacts:
+    paths:
+      - dist/*_SHA256SUMS.sig
+    expire_in: 30 days
+  rules:
+    - !reference [.release_tag_rules, rules]
+
+# Estate rule: every artefact we build is cosign-signed (transit key
+# cosign-estate). Through the release role, which carries the transit policy
+# for this project's protected TAGS (the shared signing role admits branches).
+sign:cosign:
+  extends: .cosign_sign_blob
+  stage: build
+  needs:
+    - job: build:release
+  variables:
+    COSIGN_VAULT_ROLE: "${RELEASE_VAULT_ROLE}"
+    COSIGN_BLOBS: "dist/*.zip dist/*_SHA256SUMS dist/*_manifest.json"
+  interruptible: false
+  rules:
+    - if: $COSIGN_SIGNING_ENABLED == "false"
+      when: never
+    - !reference [.release_tag_rules, rules]
+
+publish:nexus:
+  extends: .release_vault
+  stage: publish
+  image: ${ALPINE_IMAGE}
+  needs:
+    - job: build:release
+    - job: sign:gpg
+    - job: sign:cosign
+  script:
+    - scripts/publish-nexus.sh
+  rules:
+    - !reference [.release_tag_rules, rules]
+
+publish:github:
+  extends: .release_vault
+  stage: publish
+  image: ${ALPINE_IMAGE}
+  variables:
+    GIT_DEPTH: "0"
+    GIT_STRATEGY: clone
+  needs:
+    - job: publish:nexus
+      artifacts: false
+  script:
+    - scripts/publish-github.sh
+  rules:
+    - !reference [.release_tag_rules, rules]
+
+# The check a user's `terraform init` makes: the Registry lists the version,
+# serves the zip, and the SHA256SUMS signature matches the key registered for
+# the pderuiter namespace. Final releases only.
+verify:registry:
+  stage: verify
+  image: ${ALPINE_IMAGE}
+  needs:
+    - job: publish:github
+      artifacts: false
+  before_script:
+    - apk add --no-cache bash curl unzip >/dev/null
+  script:
+    - export TERRAFORM="$(TF_VERSION="${TF_VERSION_LATEST}" scripts/install-terraform.sh)"
+    - VERSION="${CI_COMMIT_TAG#v}" scripts/verify-registry.sh
+  # Registry ingestion is outside this pipeline's control (Registry or GitHub
+  # delays); a failure here means "go look", not "the release is broken".
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/

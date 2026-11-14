@@ -33,6 +33,16 @@ Run the minimal smoke test against the local Docker environment:
 
 This builds the provider, starts the HAProxy container, applies `examples/smoke/main.tf`, and then destroys it.
 
+## Integration Tests (Docker)
+
+`scripts/registry_integration.sh` and `scripts/registry_runtime_integration.sh` start `docker-compose.integration.yml` (HAProxy with the Data Plane API, Consul, an echo backend), run Terraform in a container on that network with this checkout's provider through `dev_overrides`, check traffic, Consul service discovery, ACME and runtime state, and destroy everything again. Set `PROVIDER_BINARY` to a prebuilt linux/amd64 provider to skip the build (CI does).
+
+CI (`test:integration-docker` in `.gitlab-ci.yml`) runs both against the runner host's Docker daemon, with the images pulled through the Nexus Docker Hub proxy (`scripts/ci-pull-images.sh`). A failure blocks the merge and the release.
+
+## Commits and Releases
+
+Conventional Commits: the next version is derived from them, and every merge to `main` that changes something releases. See `RELEASING.md`.
+
 ## Runtime Resources
 
 Runtime resources map to Data Plane API runtime endpoints. If a runtime endpoint uses a path parameter named `id`, the Terraform attribute is named `runtime_id` to avoid colliding with the Terraform `id`.
