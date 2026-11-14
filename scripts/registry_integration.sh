@@ -86,31 +86,20 @@ dump_compose_logs() {
 
 configure_haproxy_container() {
   local haproxy_id
-  haproxy_id="$(compose ps -q haproxy)"
+  haproxy_id="$(compose ps -a -q haproxy)"
   if [ -z "$haproxy_id" ]; then
     echo "Failed to find haproxy container ID from docker compose" >&2
     dump_compose_logs
     return 1
   fi
 
-  # The image's first boot generates dataplaneapi.yml, haproxy.cfg and an
-  # admin password (oneshot dataplaneapi-config). Copying before it finishes
-  # lets it overwrite ours: the API then runs the generated config and
-  # rejects the password read from dev/haproxy with 401.
-  local tries=0
-  until docker logs "$haproxy_id" 2>&1 | grep -q "oneshot dataplaneapi-config completed"; do
-    tries=$((tries + 1))
-    if [ "$tries" -ge 60 ]; then
-      echo "Timed out waiting for the haproxy container's first-boot config" >&2
-      return 1
-    fi
-    sleep 1
-  done
-
-  docker exec "$haproxy_id" sh -lc \
-    "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
+  # Runs on the created container, before its first start. The image's first
+  # boot (oneshot dataplaneapi-config) only replaces the placeholder admin
+  # passwords, which this config does not use, so it keeps ours. Copying into
+  # a running container raced the first-boot Data Plane API, which could
+  # rewrite its config after the copy and answer 401 from then on.
+  mkdir -p "$HAPROXY_CONFIG_DIR"/{transactions,backups,maps,ssl,general,dataplane,spoe}
   docker cp "$HAPROXY_CONFIG_DIR/." "$haproxy_id:/usr/local/etc/haproxy/"
-  docker restart "$haproxy_id" >/dev/null
 }
 
 wait_http() {
@@ -178,8 +167,9 @@ fi
 
 echo "Starting integration containers..."
 compose down --remove-orphans >/dev/null 2>&1 || true
-compose up -d
+compose up -d --no-start
 configure_haproxy_container
+compose up -d
 detect_network_name
 start_terraform_container
 
@@ -270,31 +260,34 @@ wait_body_contains "http://haproxy:18081" "Main frontend" "hello-from-consul"
 # Service discovery path test (backend server + consul resolver)
 wait_body_contains "http://haproxy:18082" "Service discovery frontend" "hello-from-consul"
 
+# Checks capture the output before grep: under pipefail, `cmd | grep -q`
+# fails when grep exits on an early match and cmd dies of SIGPIPE.
+
 # ACME config existence check
-curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
-  "http://haproxy:5555/v3/services/haproxy/configuration/acme/letsencrypt_${TF_VAR_name_suffix}" \
-  | grep -q '"directory"' || {
+ACME_JSON="$(curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
+  "http://haproxy:5555/v3/services/haproxy/configuration/acme/letsencrypt_${TF_VAR_name_suffix}" || true)"
+grep -q '"directory"' <<<"$ACME_JSON" || {
     echo "ACME configuration not found through Data Plane API" >&2
     exit 1
   }
 
 # Additional typed resource CRUD checks (state IDs after create)
-terraform_cmd state show haproxy-dataplane_userlist.itest | grep -q "id   = \"itest_userlist_${TF_VAR_name_suffix}\"" || {
+grep -q "id   = \"itest_userlist_${TF_VAR_name_suffix}\"" <<<"$(terraform_cmd state show haproxy-dataplane_userlist.itest)" || {
   echo "Userlist state check failed" >&2
   exit 1
 }
 
-terraform_cmd state show haproxy-dataplane_group.ops | grep -q "name     = \"ops_${TF_VAR_name_suffix}\"" || {
+grep -q "name     = \"ops_${TF_VAR_name_suffix}\"" <<<"$(terraform_cmd state show haproxy-dataplane_group.ops)" || {
   echo "Group state check failed" >&2
   exit 1
 }
 
-terraform_cmd state show haproxy-dataplane_cache.itest | grep -q "id   = \"cache_${TF_VAR_name_suffix}\"" || {
+grep -q "id   = \"cache_${TF_VAR_name_suffix}\"" <<<"$(terraform_cmd state show haproxy-dataplane_cache.itest)" || {
   echo "Cache state check failed" >&2
   exit 1
 }
 
-terraform_cmd state show haproxy-dataplane_log_profile.itest | grep -q "id   = \"log_profile_${TF_VAR_name_suffix}\"" || {
+grep -q "id   = \"log_profile_${TF_VAR_name_suffix}\"" <<<"$(terraform_cmd state show haproxy-dataplane_log_profile.itest)" || {
   echo "Log profile state check failed" >&2
   exit 1
 }
