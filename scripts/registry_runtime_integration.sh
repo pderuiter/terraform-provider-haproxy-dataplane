@@ -90,31 +90,20 @@ dump_compose_logs() {
 
 configure_haproxy_container() {
   local haproxy_id
-  haproxy_id="$(compose ps -q haproxy)"
+  haproxy_id="$(compose ps -a -q haproxy)"
   if [ -z "$haproxy_id" ]; then
     echo "Failed to find haproxy container ID from docker compose" >&2
     dump_compose_logs
     return 1
   fi
 
-  # The image's first boot generates dataplaneapi.yml, haproxy.cfg and an
-  # admin password (oneshot dataplaneapi-config). Copying before it finishes
-  # lets it overwrite ours: the API then runs the generated config and
-  # rejects the password read from dev/haproxy with 401.
-  local tries=0
-  until docker logs "$haproxy_id" 2>&1 | grep -q "oneshot dataplaneapi-config completed"; do
-    tries=$((tries + 1))
-    if [ "$tries" -ge 60 ]; then
-      echo "Timed out waiting for the haproxy container's first-boot config" >&2
-      return 1
-    fi
-    sleep 1
-  done
-
-  docker exec "$haproxy_id" sh -lc \
-    "mkdir -p /usr/local/etc/haproxy/transactions /usr/local/etc/haproxy/backups /usr/local/etc/haproxy/maps /usr/local/etc/haproxy/ssl /usr/local/etc/haproxy/general /usr/local/etc/haproxy/dataplane /usr/local/etc/haproxy/spoe" >/dev/null
+  # Runs on the created container, before its first start. The image's first
+  # boot (oneshot dataplaneapi-config) only replaces the placeholder admin
+  # passwords, which this config does not use, so it keeps ours. Copying into
+  # a running container raced the first-boot Data Plane API, which could
+  # rewrite its config after the copy and answer 401 from then on.
+  mkdir -p "$HAPROXY_CONFIG_DIR"/{transactions,backups,maps,ssl,general,dataplane,spoe}
   docker cp "$HAPROXY_CONFIG_DIR/." "$haproxy_id:/usr/local/etc/haproxy/"
-  docker restart "$haproxy_id" >/dev/null
 }
 
 wait_http() {
@@ -158,8 +147,9 @@ fi
 
 echo "Starting integration containers for runtime scenario..."
 compose down --remove-orphans >/dev/null 2>&1 || true
-compose up -d
+compose up -d --no-start
 configure_haproxy_container
+compose up -d
 detect_network_name
 start_terraform_container
 
@@ -247,9 +237,11 @@ terraform_cmd apply -auto-approve -parallelism=1
 RUNTIME_BACKEND="be_http"
 RUNTIME_SERVER="runtime-${TF_VAR_name_suffix}"
 
-curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
-  "http://haproxy:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" \
-  | grep -q "${RUNTIME_SERVER}" || {
+# Checks capture the output before grep: under pipefail, `cmd | grep -q`
+# fails when grep exits on an early match and cmd dies of SIGPIPE.
+RUNTIME_JSON="$(curl_via_network -fsS -u "admin:${HAPROXY_ADMIN_PASSWORD}" \
+  "http://haproxy:5555/v3/services/haproxy/runtime/backends/${RUNTIME_BACKEND}/servers/${RUNTIME_SERVER}" || true)"
+grep -q "${RUNTIME_SERVER}" <<<"$RUNTIME_JSON" || {
     echo "Runtime backend server not found" >&2
     exit 1
   }
