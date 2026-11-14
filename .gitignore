@@ -6,3 +6,17 @@
 .terraform.lock.hcl
 dev/haproxy/backups/
 dev/haproxy/transactions/
+
+# CI Go caches (ci-cd-toolkit keeps GOPATH/GOCACHE in the checkout)
+/.go/
+/.go-cache/
+
+# Provider built for the integration job (build:integration-provider)
+/it/
+
+# Test and scan reports
+coverage.*
+test-output.txt
+*-report.json
+govulncheck.json
+gl-code-quality-report.json

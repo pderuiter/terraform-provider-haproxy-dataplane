@@ -136,5 +136,8 @@ repository, from tags created and mirrored by Gitea Actions (last run
 2026-02-08); GoReleaser signed them there with key `39C79E83...`. The last release made that way, and the latest on the
 Registry, is v0.1.20. v0.1.21 exists only as a GitLab tag: it was never
 mirrored to GitHub, so it has no release, and it is not rebuilt (tags are
-immutable). The first release built by this pipeline is the next one after
-v0.1.21, signed with the current key. Old GitHub releases are left as they are.
+immutable). v0.1.22, the first tag of this pipeline, failed in
+`build:release` before anything was signed or published (GoReleaser refused
+the CI caches and test reports as uncommitted files, fixed in `.gitignore`);
+it is not rebuilt either. The first release built by this pipeline is v0.1.23,
+signed with the current key. Old GitHub releases are left as they are.
